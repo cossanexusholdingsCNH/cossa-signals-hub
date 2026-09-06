@@ -33,7 +33,7 @@ const SIGNAL_SELECT = `
 
 export type SignalRow = Signal;
 
-const LIVE_STATUSES = ["pending", "active", "target_1_hit", "target_2_hit", "target_3_hit"];
+const LIVE_STATUSES = ["pending", "active", "target_1_hit", "target_2_hit", "target_3_hit"] as const;
 const CLOSED_STATUSES = [
   "closed_win",
   "closed_loss",
@@ -41,7 +41,7 @@ const CLOSED_STATUSES = [
   "expired",
   "cancelled",
   "invalidated",
-];
+] as const;
 
 export function usePlatformControls() {
   return useQuery({

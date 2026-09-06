@@ -34,7 +34,7 @@ function MatrixCard({ signal }: { signal: SignalRow }) {
             {signal.is_demo ? <DemoBadge /> : null}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {inst?.display_name} · {CATEGORY_LABEL[inst?.category] ?? inst?.category} ·{" "}
+            {inst?.display_name} · {CATEGORY_LABEL[inst?.category ?? ""] ?? inst?.category} ·{" "}
             {signal.timeframe}
           </p>
         </div>
@@ -163,7 +163,7 @@ export function SignalMatrix({ signals }: { signals: SignalRow[] }) {
                   </Cell>
                   <Cell>
                     <span className="text-muted-foreground">
-                      {CATEGORY_LABEL[inst?.category] ?? inst?.category}
+                      {CATEGORY_LABEL[inst?.category ?? ""] ?? inst?.category}
                     </span>
                   </Cell>
                   <Cell>
