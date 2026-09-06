@@ -2,6 +2,20 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
+import type {
+  DataHealthRow,
+  Heartbeat,
+  Instrument,
+  MarketRegime,
+  PerformanceSnapshot,
+  PlatformControls,
+  RiskCheck,
+  Signal,
+  SignalIndicator,
+  SignalVote,
+  Strategy,
+  TierRow,
+} from "@/lib/types";
 
 const SIGNAL_SELECT = `
   id, instrument_id, strategy_id, strategy_name, timeframe, direction, confidence_score,
@@ -17,9 +31,7 @@ const SIGNAL_SELECT = `
     validation_status, current_price, last_data_at, provider, timeframe_default )
 `;
 
-export type SignalRow = Record<string, any> & {
-  instrument: Record<string, any> | null;
-};
+export type SignalRow = Signal;
 
 export function usePlatformControls() {
   return useQuery({
@@ -31,7 +43,7 @@ export function usePlatformControls() {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      return data as PlatformControls | null;
     },
     staleTime: 30_000,
   });
