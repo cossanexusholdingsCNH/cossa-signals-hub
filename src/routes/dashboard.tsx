@@ -128,7 +128,7 @@ function DashboardContent() {
                     {h.latency_ms != null ? (
                       <span className="numeric text-muted-foreground">{h.latency_ms} ms</span>
                     ) : null}
-                    <FreshnessBadge timestamp={h.last_received_at} staleSeconds={controls?.stale_threshold_seconds} />
+                    <FreshnessBadge timestamp={h.last_received_at} {...(controls ? { staleSeconds: controls.stale_threshold_seconds } : {})} />
                   </span>
                 </li>
               ))}
