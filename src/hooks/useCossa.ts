@@ -33,6 +33,16 @@ const SIGNAL_SELECT = `
 
 export type SignalRow = Signal;
 
+const LIVE_STATUSES = ["pending", "active", "target_1_hit", "target_2_hit", "target_3_hit"];
+const CLOSED_STATUSES = [
+  "closed_win",
+  "closed_loss",
+  "break_even",
+  "expired",
+  "cancelled",
+  "invalidated",
+];
+
 export function usePlatformControls() {
   return useQuery({
     queryKey: ["platform_controls"],
@@ -43,7 +53,7 @@ export function usePlatformControls() {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data as PlatformControls | null;
+      return data as unknown as PlatformControls | null;
     },
     staleTime: 30_000,
   });
@@ -59,7 +69,7 @@ export function useInstruments() {
         .order("asset_class")
         .order("symbol");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as Instrument[];
     },
     staleTime: 60_000,
   });
@@ -75,7 +85,7 @@ export function useInstrument(symbol: string) {
         .eq("symbol", symbol)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      return data as unknown as Instrument | null;
     },
   });
 }
@@ -86,7 +96,7 @@ export function useStrategies() {
     queryFn: async () => {
       const { data, error } = await supabase.from("strategies").select("*").order("name");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as Strategy[];
     },
     staleTime: 60_000,
   });
@@ -99,11 +109,11 @@ export function useLiveSignals(limit = 200) {
       const { data, error } = await supabase
         .from("signals")
         .select(SIGNAL_SELECT)
-        .in("status", ["pending", "active", "target_1_hit", "target_2_hit", "target_3_hit"])
+        .in("status", LIVE_STATUSES)
         .order("opened_at", { ascending: false })
         .limit(limit);
       if (error) throw error;
-      return (data ?? []) as SignalRow[];
+      return (data ?? []) as unknown as Signal[];
     },
   });
 }
@@ -115,18 +125,26 @@ export function useSignalHistory(limit = 200) {
       const { data, error } = await supabase
         .from("signals")
         .select(SIGNAL_SELECT)
-        .in("status", [
-          "closed_win",
-          "closed_loss",
-          "break_even",
-          "expired",
-          "cancelled",
-          "invalidated",
-        ])
+        .in("status", CLOSED_STATUSES)
         .order("opened_at", { ascending: false })
         .limit(limit);
       if (error) throw error;
-      return (data ?? []) as SignalRow[];
+      return (data ?? []) as unknown as Signal[];
+    },
+  });
+}
+
+export function useAllSignals(limit = 300) {
+  return useQuery({
+    queryKey: ["signals", "all", limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("signals")
+        .select(SIGNAL_SELECT)
+        .order("opened_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as unknown as Signal[];
     },
   });
 }
@@ -141,7 +159,7 @@ export function useSignal(id: string) {
         .eq("id", id)
         .maybeSingle();
       if (error) throw error;
-      return data as SignalRow | null;
+      return data as unknown as Signal | null;
     },
   });
 }
@@ -156,7 +174,7 @@ export function useSignalIndicators(signalId: string) {
         .eq("signal_id", signalId)
         .order("weight", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as SignalIndicator[];
     },
   });
 }
@@ -171,7 +189,7 @@ export function useSignalVotes(signalId: string) {
         .eq("signal_id", signalId)
         .order("agent_name");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as SignalVote[];
     },
   });
 }
@@ -188,7 +206,7 @@ export function useRiskCheck(signalId: string) {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      return data as unknown as RiskCheck | null;
     },
   });
 }
@@ -203,7 +221,7 @@ export function useMarketRegimes() {
         .order("detected_at", { ascending: false })
         .limit(200);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as MarketRegime[];
     },
   });
 }
@@ -219,7 +237,7 @@ export function usePerformanceSnapshots() {
         )
         .order("calculated_at", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as PerformanceSnapshot[];
     },
   });
 }
@@ -233,7 +251,7 @@ export function useDataHealth() {
         .select("*, instrument:instruments ( symbol )")
         .order("last_received_at", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as DataHealthRow[];
     },
   });
 }
@@ -247,7 +265,7 @@ export function useHeartbeats() {
         .select("*")
         .order("service_name");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as Heartbeat[];
     },
   });
 }
@@ -262,7 +280,7 @@ export function useSubscriptionTiers() {
         .eq("enabled", true)
         .order("sort_order");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as TierRow[];
     },
     staleTime: 300_000,
   });
@@ -276,13 +294,13 @@ export function useSignalRealtime(enabled = true) {
     const channel = supabase
       .channel("cossa-signals")
       .on("postgres_changes", { event: "*", schema: "public", table: "signals" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["signals"] });
+        void queryClient.invalidateQueries({ queryKey: ["signals"] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "data_health" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["data_health"] });
+        void queryClient.invalidateQueries({ queryKey: ["data_health"] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "platform_controls" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["platform_controls"] });
+        void queryClient.invalidateQueries({ queryKey: ["platform_controls"] });
       })
       .subscribe();
     return () => {
