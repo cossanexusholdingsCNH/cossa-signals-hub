@@ -13,7 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as MatrixRouteImport } from './routes/matrix'
+import { Route as PerformanceRouteImport } from './routes/performance'
 import { Route as SignalsRouteImport } from './routes/signals'
+import { Route as SignalsIdRouteImport } from './routes/signals.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -35,10 +37,20 @@ const MatrixRoute = MatrixRouteImport.update({
   path: '/matrix',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PerformanceRoute = PerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignalsRoute = SignalsRouteImport.update({
   id: '/signals',
   path: '/signals',
   getParentRoute: () => rootRouteImport,
+} as any)
+const SignalsIdRoute = SignalsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => SignalsRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -46,14 +58,18 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/matrix': typeof MatrixRoute
-  '/signals': typeof SignalsRoute
+  '/performance': typeof PerformanceRoute
+  '/signals': typeof SignalsRouteWithChildren
+  '/signals/$id': typeof SignalsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/matrix': typeof MatrixRoute
-  '/signals': typeof SignalsRoute
+  '/performance': typeof PerformanceRoute
+  '/signals': typeof SignalsRouteWithChildren
+  '/signals/$id': typeof SignalsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -61,14 +77,38 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/matrix': typeof MatrixRoute
-  '/signals': typeof SignalsRoute
+  '/performance': typeof PerformanceRoute
+  '/signals': typeof SignalsRouteWithChildren
+  '/signals/$id': typeof SignalsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard' | '/matrix' | '/signals'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/matrix'
+    | '/performance'
+    | '/signals'
+    | '/signals/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/matrix' | '/signals'
-  id: '__root__' | '/' | '/auth' | '/dashboard' | '/matrix' | '/signals'
+  to:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/matrix'
+    | '/performance'
+    | '/signals'
+    | '/signals/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/matrix'
+    | '/performance'
+    | '/signals'
+    | '/signals/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -76,7 +116,8 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
   MatrixRoute: typeof MatrixRoute
-  SignalsRoute: typeof SignalsRoute
+  PerformanceRoute: typeof PerformanceRoute
+  SignalsRoute: typeof SignalsRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -109,6 +150,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MatrixRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/performance': {
+      id: '/performance'
+      path: '/performance'
+      fullPath: '/performance'
+      preLoaderRoute: typeof PerformanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signals': {
       id: '/signals'
       path: '/signals'
@@ -116,15 +164,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignalsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/signals/$id': {
+      id: '/signals/$id'
+      path: '/$id'
+      fullPath: '/signals/$id'
+      preLoaderRoute: typeof SignalsIdRouteImport
+      parentRoute: typeof SignalsRoute
+    }
   }
 }
+
+interface SignalsRouteChildren {
+  SignalsIdRoute: typeof SignalsIdRoute
+}
+
+const SignalsRouteChildren: SignalsRouteChildren = {
+  SignalsIdRoute: SignalsIdRoute,
+}
+
+const SignalsRouteWithChildren =
+  SignalsRoute._addFileChildren(SignalsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
   MatrixRoute: MatrixRoute,
-  SignalsRoute: SignalsRoute,
+  PerformanceRoute: PerformanceRoute,
+  SignalsRoute: SignalsRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
