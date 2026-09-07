@@ -115,6 +115,10 @@ export function useLiveSignals(limit = 200) {
       if (error) throw error;
       return (data ?? []) as unknown as Signal[];
     },
+    // Free/Basic entitlements are enforced by RLS using a time delay. Re-query so a
+    // row becomes visible when its server-side delay window expires even if no new
+    // realtime event is emitted at that exact moment.
+    refetchInterval: 30_000,
   });
 }
 
@@ -131,6 +135,7 @@ export function useSignalHistory(limit = 200) {
       if (error) throw error;
       return (data ?? []) as unknown as Signal[];
     },
+    refetchInterval: 60_000,
   });
 }
 

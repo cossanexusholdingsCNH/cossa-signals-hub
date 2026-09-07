@@ -3,7 +3,7 @@ import { Radio, ShieldCheck, Gauge, Database } from "lucide-react";
 
 import { RequireAuth } from "@/components/layout/RequireAuth";
 import { PageHeader, Panel, PanelHeader, StatCard, EmptyState } from "@/components/cossa/primitives";
-import { RegimeBadge, FreshnessBadge, DirectionBadge } from "@/components/cossa/badges";
+import { RegimeBadge, FreshnessBadge, DirectionBadge, DemoBadge } from "@/components/cossa/badges";
 import { SignalMatrix } from "@/components/cossa/SignalMatrix";
 import {
   useLiveSignals,
@@ -44,7 +44,9 @@ function DashboardContent() {
   const live = signals ?? [];
   const actionable = live.filter((s) => s.direction === "buy" || s.direction === "sell");
   const waiting = live.filter((s) => s.direction === "wait" || s.direction === "no_trade");
-  const staleFeeds = (health ?? []).filter((h) => h.status === "stale" || h.status === "offline");
+  const realHealth = (health ?? []).filter((h) => !h.is_demo);
+  const demoHealth = (health ?? []).filter((h) => h.is_demo);
+  const staleFeeds = realHealth.filter((h) => h.status === "stale" || h.status === "offline");
   const latestRegimes = (regimes ?? []).slice(0, 8);
 
   return (
@@ -66,9 +68,9 @@ function DashboardContent() {
         />
         <StatCard
           label="Data feeds"
-          value={staleFeeds.length === 0 ? "Healthy" : `${staleFeeds.length} degraded`}
-          tone={staleFeeds.length === 0 ? "bullish" : "bearish"}
-          hint="Stale or offline sources"
+          value={realHealth.length === 0 && demoHealth.length > 0 ? "Demo only" : staleFeeds.length === 0 ? "Healthy" : `${staleFeeds.length} degraded`}
+          tone={realHealth.length === 0 && demoHealth.length > 0 ? "caution" : staleFeeds.length === 0 ? "bullish" : "bearish"}
+          hint={realHealth.length === 0 && demoHealth.length > 0 ? "No live provider heartbeat yet" : "Stale or offline live sources"}
         />
       </div>
 
@@ -123,6 +125,7 @@ function DashboardContent() {
                   <span className="flex items-center gap-2">
                     <Database className="size-3.5 text-muted-foreground" />
                     <span className="numeric font-medium">{h.instrument?.symbol ?? h.provider}</span>
+                    {h.is_demo ? <DemoBadge /> : null}
                   </span>
                   <span className="flex items-center gap-3">
                     {h.latency_ms != null ? (

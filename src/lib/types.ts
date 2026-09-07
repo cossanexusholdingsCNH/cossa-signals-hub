@@ -194,6 +194,7 @@ export interface DataHealthRow {
   last_received_at: Str;
   latency_ms: number | null;
   status: DataStatus;
+  is_demo: boolean;
   instrument: { symbol: string } | null;
 }
 
@@ -203,6 +204,7 @@ export interface Heartbeat {
   status: DataStatus;
   last_heartbeat: Str;
   message: Str;
+  is_demo: boolean;
 }
 
 export interface PlatformControls {
