@@ -135,7 +135,7 @@ WHERE EXISTS (
 -- should upsert with is_demo=false when they take ownership of these services.
 UPDATE public.service_heartbeats
 SET is_demo = true
-WHERE service_name IN ('signal-engine', 'deriv-feed', 'forex-feed', 'realtime');
+WHERE service_name IN ('python_signal_engine', 'market_data_feed', 'database', 'realtime', 'signal_writer', 'notification_worker', 'ai_service');
 
 COMMENT ON COLUMN public.data_health.is_demo IS
   'True when the health row is simulated/demo telemetry rather than a live provider heartbeat.';
