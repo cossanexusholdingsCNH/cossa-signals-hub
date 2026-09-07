@@ -46,7 +46,7 @@ AS $$
   SELECT
     public.is_staff(_user_id)
     OR (
-      COALESCE((SELECT pc.signals_enabled FROM public.platform_controls pc ORDER BY pc.created_at ASC LIMIT 1), false)
+      COALESCE((SELECT pc.signals_enabled FROM public.platform_controls pc ORDER BY pc.updated_at DESC, pc.created_at DESC LIMIT 1), false)
       AND CASE public.effective_subscription_tier(_user_id)
         WHEN 'pro' THEN true
         WHEN 'basic' THEN
