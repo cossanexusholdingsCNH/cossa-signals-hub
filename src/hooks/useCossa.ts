@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
 import type {
@@ -307,4 +307,323 @@ export function useSignalRealtime(enabled = true) {
       void supabase.removeChannel(channel);
     };
   }, [enabled, queryClient]);
+}
+
+/* ---------------------------------------------------------------- Academy */
+
+export interface AcademyCategory {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+}
+
+export interface AcademyArticle {
+  id: string;
+  category_id: string | null;
+  slug: string;
+  title: string;
+  summary: string | null;
+  content: string | null;
+  reading_minutes: number | null;
+  level: string | null;
+  published: boolean;
+  created_at: string;
+}
+
+export function useAcademyCategories() {
+  return useQuery({
+    queryKey: ["academy_categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("academy_categories")
+        .select("id, slug, name, description, sort_order")
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as unknown as AcademyCategory[];
+    },
+    staleTime: 300_000,
+  });
+}
+
+export function useAcademyArticles() {
+  return useQuery({
+    queryKey: ["academy_articles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("academy_articles")
+        .select("id, category_id, slug, title, summary, content, reading_minutes, level, published, created_at")
+        .eq("published", true)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as AcademyArticle[];
+    },
+    staleTime: 300_000,
+  });
+}
+
+export function useAcademyArticle(slug: string) {
+  return useQuery({
+    queryKey: ["academy_article", slug],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("academy_articles")
+        .select("id, category_id, slug, title, summary, content, reading_minutes, level, published, created_at")
+        .eq("slug", slug)
+        .eq("published", true)
+        .maybeSingle();
+      if (error) throw error;
+      return data as unknown as AcademyArticle | null;
+    },
+  });
+}
+
+/* -------------------------------------------------------------- Watchlist */
+
+export interface WatchlistItemRow {
+  id: string;
+  watchlist_id: string;
+  instrument_id: string;
+  instrument: { id: string; symbol: string; display_name: string; category: string; current_price: number | null; last_data_at: string | null; risk_rating: string } | null;
+}
+
+export function useWatchlist(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["watchlist", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data: lists, error: listErr } = await supabase
+        .from("watchlists")
+        .select("id, name")
+        .eq("user_id", userId!)
+        .order("created_at")
+        .limit(1);
+      if (listErr) throw listErr;
+      let list = lists?.[0];
+      if (!list) {
+        const { data: created, error: createErr } = await supabase
+          .from("watchlists")
+          .insert({ user_id: userId!, name: "My watchlist" })
+          .select("id, name")
+          .single();
+        if (createErr) throw createErr;
+        list = created;
+      }
+      const { data: items, error: itemErr } = await supabase
+        .from("watchlist_items")
+        .select("id, watchlist_id, instrument_id, instrument:instruments ( id, symbol, display_name, category, current_price, last_data_at, risk_rating )")
+        .eq("watchlist_id", list.id);
+      if (itemErr) throw itemErr;
+      return { list, items: (items ?? []) as unknown as WatchlistItemRow[] };
+    },
+  });
+}
+
+export function useToggleWatchlistItem(userId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      watchlistId,
+      instrumentId,
+      existingItemId,
+    }: {
+      watchlistId: string;
+      instrumentId: string;
+      existingItemId?: string;
+    }) => {
+      if (existingItemId) {
+        const { error } = await supabase.from("watchlist_items").delete().eq("id", existingItemId);
+        if (error) throw error;
+        return;
+      }
+      const { error } = await supabase
+        .from("watchlist_items")
+        .insert({ watchlist_id: watchlistId, instrument_id: instrumentId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["watchlist", userId] });
+    },
+  });
+}
+
+/* ------------------------------------------------------- Alert preferences */
+
+export type AlertPrefs = {
+  id: string;
+  user_id: string;
+  new_signal: boolean;
+  high_confidence_signal: boolean;
+  signal_invalidated: boolean;
+  target_hit: boolean;
+  stop_loss_hit: boolean;
+  instrument_becomes_active: boolean;
+  regime_change: boolean;
+  channel_in_app: boolean;
+  channel_email: boolean;
+  channel_telegram: boolean;
+  channel_whatsapp: boolean;
+  channel_push: boolean;
+  telegram_handle: string | null;
+  whatsapp_number: string | null;
+};
+
+export function useAlertPreferences(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["alert_preferences", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("alert_preferences")
+        .select("*")
+        .eq("user_id", userId!)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) return data as unknown as AlertPrefs;
+      const { data: created, error: createErr } = await supabase
+        .from("alert_preferences")
+        .insert({ user_id: userId! })
+        .select("*")
+        .single();
+      if (createErr) throw createErr;
+      return created as unknown as AlertPrefs;
+    },
+  });
+}
+
+export function useUpdateAlertPreferences(userId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: Partial<AlertPrefs>) => {
+      const { error } = await supabase
+        .from("alert_preferences")
+        .update(patch)
+        .eq("user_id", userId!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["alert_preferences", userId] });
+    },
+  });
+}
+
+/* ---------------------------------------------------------- Subscriptions */
+
+export interface SubscriptionRow {
+  id: string;
+  tier: "free" | "basic" | "pro";
+  provider: string;
+  status: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+}
+
+export function useMySubscription(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["subscription", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("id, tier, provider, status, current_period_start, current_period_end, cancelled_at, created_at")
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as unknown as SubscriptionRow | null;
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ Admin */
+
+export interface AuditLogRow {
+  id: string;
+  actor_label: string | null;
+  action: string;
+  entity: string;
+  entity_id: string | null;
+  created_at: string;
+}
+
+export function useAuditLogs(limit = 200) {
+  return useQuery({
+    queryKey: ["audit_logs", limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("audit_logs")
+        .select("id, actor_label, action, entity, entity_id, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as unknown as AuditLogRow[];
+    },
+  });
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  country: string | null;
+  subscription_tier: "free" | "basic" | "pro";
+  subscription_status: string;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export function useAdminUsers() {
+  return useQuery({
+    queryKey: ["admin_users"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, country, subscription_tier, subscription_status, last_login_at, created_at")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return (data ?? []) as unknown as AdminUserRow[];
+    },
+  });
+}
+
+export function useModels() {
+  return useQuery({
+    queryKey: ["models"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("models")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as {
+        id: string;
+        name: string;
+        model_type: string;
+        version: string;
+        validation_status: string;
+        training_period: string | null;
+        test_period: string | null;
+        features_used: string[];
+        enabled: boolean;
+      }[];
+    },
+  });
+}
+
+export function useUpdatePlatformControls() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
+      const { error } = await supabase.from("platform_controls").update(patch).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["platform_controls"] });
+    },
+  });
 }
