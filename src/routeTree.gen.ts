@@ -10,16 +10,32 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AcademyRouteImport } from './routes/academy'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as LegalRouteImport } from './routes/legal'
+import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as MatrixRouteImport } from './routes/matrix'
 import { Route as PerformanceRouteImport } from './routes/performance'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as SignalsRouteImport } from './routes/signals'
+import { Route as WatchlistRouteImport } from './routes/watchlist'
+import { Route as AcademyIndexRouteImport } from './routes/academy.index'
+import { Route as AcademySlugRouteImport } from './routes/academy.$slug'
+import { Route as InstrumentsSymbolRouteImport } from './routes/instruments.$symbol'
+import { Route as MarketsIndexRouteImport } from './routes/markets.index'
+import { Route as MarketsForexRouteImport } from './routes/markets.forex'
+import { Route as MarketsSyntheticsRouteImport } from './routes/markets.synthetics'
 import { Route as SignalsIdRouteImport } from './routes/signals.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcademyRoute = AcademyRouteImport.update({
+  id: '/academy',
+  path: '/academy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -32,6 +48,16 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LegalRoute = LegalRouteImport.update({
+  id: '/legal',
+  path: '/legal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketsRoute = MarketsRouteImport.update({
+  id: '/markets',
+  path: '/markets',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MatrixRoute = MatrixRouteImport.update({
   id: '/matrix',
   path: '/matrix',
@@ -42,10 +68,50 @@ const PerformanceRoute = PerformanceRouteImport.update({
   path: '/performance',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignalsRoute = SignalsRouteImport.update({
   id: '/signals',
   path: '/signals',
   getParentRoute: () => rootRouteImport,
+} as any)
+const WatchlistRoute = WatchlistRouteImport.update({
+  id: '/watchlist',
+  path: '/watchlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcademyIndexRoute = AcademyIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AcademyRoute,
+} as any)
+const AcademySlugRoute = AcademySlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => AcademyRoute,
+} as any)
+const InstrumentsSymbolRoute = InstrumentsSymbolRouteImport.update({
+  id: '/instruments/$symbol',
+  path: '/instruments/$symbol',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketsIndexRoute = MarketsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MarketsRoute,
+} as any)
+const MarketsForexRoute = MarketsForexRouteImport.update({
+  id: '/forex',
+  path: '/forex',
+  getParentRoute: () => MarketsRoute,
+} as any)
+const MarketsSyntheticsRoute = MarketsSyntheticsRouteImport.update({
+  id: '/synthetics',
+  path: '/synthetics',
+  getParentRoute: () => MarketsRoute,
 } as any)
 const SignalsIdRoute = SignalsIdRouteImport.update({
   id: '/$id',
@@ -55,69 +121,137 @@ const SignalsIdRoute = SignalsIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/academy': typeof AcademyRouteWithChildren
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/legal': typeof LegalRoute
+  '/markets': typeof MarketsRouteWithChildren
   '/matrix': typeof MatrixRoute
   '/performance': typeof PerformanceRoute
+  '/pricing': typeof PricingRoute
   '/signals': typeof SignalsRouteWithChildren
+  '/watchlist': typeof WatchlistRoute
+  '/academy/$slug': typeof AcademySlugRoute
+  '/instruments/$symbol': typeof InstrumentsSymbolRoute
+  '/markets/forex': typeof MarketsForexRoute
+  '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
+  '/academy/': typeof AcademyIndexRoute
+  '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/legal': typeof LegalRoute
   '/matrix': typeof MatrixRoute
   '/performance': typeof PerformanceRoute
+  '/pricing': typeof PricingRoute
   '/signals': typeof SignalsRouteWithChildren
+  '/watchlist': typeof WatchlistRoute
+  '/academy/$slug': typeof AcademySlugRoute
+  '/instruments/$symbol': typeof InstrumentsSymbolRoute
+  '/markets/forex': typeof MarketsForexRoute
+  '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
+  '/academy': typeof AcademyIndexRoute
+  '/markets': typeof MarketsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/academy': typeof AcademyRouteWithChildren
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/legal': typeof LegalRoute
+  '/markets': typeof MarketsRouteWithChildren
   '/matrix': typeof MatrixRoute
   '/performance': typeof PerformanceRoute
+  '/pricing': typeof PricingRoute
   '/signals': typeof SignalsRouteWithChildren
+  '/watchlist': typeof WatchlistRoute
+  '/academy/$slug': typeof AcademySlugRoute
+  '/instruments/$symbol': typeof InstrumentsSymbolRoute
+  '/markets/forex': typeof MarketsForexRoute
+  '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
+  '/academy/': typeof AcademyIndexRoute
+  '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/academy'
     | '/auth'
     | '/dashboard'
+    | '/legal'
+    | '/markets'
     | '/matrix'
     | '/performance'
+    | '/pricing'
     | '/signals'
+    | '/watchlist'
+    | '/academy/$slug'
+    | '/instruments/$symbol'
+    | '/markets/forex'
+    | '/markets/synthetics'
     | '/signals/$id'
+    | '/academy/'
+    | '/markets/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/legal'
     | '/matrix'
     | '/performance'
+    | '/pricing'
     | '/signals'
+    | '/watchlist'
+    | '/academy/$slug'
+    | '/instruments/$symbol'
+    | '/markets/forex'
+    | '/markets/synthetics'
     | '/signals/$id'
+    | '/academy'
+    | '/markets'
   id:
     | '__root__'
     | '/'
+    | '/academy'
     | '/auth'
     | '/dashboard'
+    | '/legal'
+    | '/markets'
     | '/matrix'
     | '/performance'
+    | '/pricing'
     | '/signals'
+    | '/watchlist'
+    | '/academy/$slug'
+    | '/instruments/$symbol'
+    | '/markets/forex'
+    | '/markets/synthetics'
     | '/signals/$id'
+    | '/academy/'
+    | '/markets/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AcademyRoute: typeof AcademyRouteWithChildren
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
+  LegalRoute: typeof LegalRoute
+  MarketsRoute: typeof MarketsRouteWithChildren
   MatrixRoute: typeof MatrixRoute
   PerformanceRoute: typeof PerformanceRoute
+  PricingRoute: typeof PricingRoute
   SignalsRoute: typeof SignalsRouteWithChildren
+  WatchlistRoute: typeof WatchlistRoute
+  InstrumentsSymbolRoute: typeof InstrumentsSymbolRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -127,6 +261,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/academy': {
+      id: '/academy'
+      path: '/academy'
+      fullPath: '/academy'
+      preLoaderRoute: typeof AcademyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -143,6 +284,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/legal': {
+      id: '/legal'
+      path: '/legal'
+      fullPath: '/legal'
+      preLoaderRoute: typeof LegalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/markets': {
+      id: '/markets'
+      path: '/markets'
+      fullPath: '/markets'
+      preLoaderRoute: typeof MarketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/matrix': {
       id: '/matrix'
       path: '/matrix'
@@ -157,12 +312,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PerformanceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signals': {
       id: '/signals'
       path: '/signals'
       fullPath: '/signals'
       preLoaderRoute: typeof SignalsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/watchlist': {
+      id: '/watchlist'
+      path: '/watchlist'
+      fullPath: '/watchlist'
+      preLoaderRoute: typeof WatchlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/academy/': {
+      id: '/academy/'
+      path: '/'
+      fullPath: '/academy/'
+      preLoaderRoute: typeof AcademyIndexRouteImport
+      parentRoute: typeof AcademyRoute
+    }
+    '/academy/$slug': {
+      id: '/academy/$slug'
+      path: '/$slug'
+      fullPath: '/academy/$slug'
+      preLoaderRoute: typeof AcademySlugRouteImport
+      parentRoute: typeof AcademyRoute
+    }
+    '/instruments/$symbol': {
+      id: '/instruments/$symbol'
+      path: '/instruments/$symbol'
+      fullPath: '/instruments/$symbol'
+      preLoaderRoute: typeof InstrumentsSymbolRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/markets/': {
+      id: '/markets/'
+      path: '/'
+      fullPath: '/markets/'
+      preLoaderRoute: typeof MarketsIndexRouteImport
+      parentRoute: typeof MarketsRoute
+    }
+    '/markets/forex': {
+      id: '/markets/forex'
+      path: '/forex'
+      fullPath: '/markets/forex'
+      preLoaderRoute: typeof MarketsForexRouteImport
+      parentRoute: typeof MarketsRoute
+    }
+    '/markets/synthetics': {
+      id: '/markets/synthetics'
+      path: '/synthetics'
+      fullPath: '/markets/synthetics'
+      preLoaderRoute: typeof MarketsSyntheticsRouteImport
+      parentRoute: typeof MarketsRoute
     }
     '/signals/$id': {
       id: '/signals/$id'
@@ -173,6 +384,34 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AcademyRouteChildren {
+  AcademySlugRoute: typeof AcademySlugRoute
+  AcademyIndexRoute: typeof AcademyIndexRoute
+}
+
+const AcademyRouteChildren: AcademyRouteChildren = {
+  AcademySlugRoute: AcademySlugRoute,
+  AcademyIndexRoute: AcademyIndexRoute,
+}
+
+const AcademyRouteWithChildren =
+  AcademyRoute._addFileChildren(AcademyRouteChildren)
+
+interface MarketsRouteChildren {
+  MarketsForexRoute: typeof MarketsForexRoute
+  MarketsSyntheticsRoute: typeof MarketsSyntheticsRoute
+  MarketsIndexRoute: typeof MarketsIndexRoute
+}
+
+const MarketsRouteChildren: MarketsRouteChildren = {
+  MarketsForexRoute: MarketsForexRoute,
+  MarketsSyntheticsRoute: MarketsSyntheticsRoute,
+  MarketsIndexRoute: MarketsIndexRoute,
+}
+
+const MarketsRouteWithChildren =
+  MarketsRoute._addFileChildren(MarketsRouteChildren)
 
 interface SignalsRouteChildren {
   SignalsIdRoute: typeof SignalsIdRoute
@@ -187,11 +426,17 @@ const SignalsRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AcademyRoute: AcademyRouteWithChildren,
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
+  LegalRoute: LegalRoute,
+  MarketsRoute: MarketsRouteWithChildren,
   MatrixRoute: MatrixRoute,
   PerformanceRoute: PerformanceRoute,
+  PricingRoute: PricingRoute,
   SignalsRoute: SignalsRouteWithChildren,
+  WatchlistRoute: WatchlistRoute,
+  InstrumentsSymbolRoute: InstrumentsSymbolRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
