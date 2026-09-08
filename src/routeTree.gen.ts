@@ -12,9 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as MatrixRouteImport } from './routes/matrix'
 import { Route as PerformanceRouteImport } from './routes/performance'
 import { Route as SignalsRouteImport } from './routes/signals'
+import { Route as MarketsIndexRouteImport } from './routes/markets.index'
+import { Route as MarketsForexRouteImport } from './routes/markets.forex'
+import { Route as MarketsSyntheticsRouteImport } from './routes/markets.synthetics'
 import { Route as SignalsIdRouteImport } from './routes/signals.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -32,6 +36,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketsRoute = MarketsRouteImport.update({
+  id: '/markets',
+  path: '/markets',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MatrixRoute = MatrixRouteImport.update({
   id: '/matrix',
   path: '/matrix',
@@ -47,6 +56,21 @@ const SignalsRoute = SignalsRouteImport.update({
   path: '/signals',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketsIndexRoute = MarketsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MarketsRoute,
+} as any)
+const MarketsForexRoute = MarketsForexRouteImport.update({
+  id: '/forex',
+  path: '/forex',
+  getParentRoute: () => MarketsRoute,
+} as any)
+const MarketsSyntheticsRoute = MarketsSyntheticsRouteImport.update({
+  id: '/synthetics',
+  path: '/synthetics',
+  getParentRoute: () => MarketsRoute,
+} as any)
 const SignalsIdRoute = SignalsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -57,10 +81,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/markets': typeof MarketsRouteWithChildren
   '/matrix': typeof MatrixRoute
   '/performance': typeof PerformanceRoute
   '/signals': typeof SignalsRouteWithChildren
+  '/markets/forex': typeof MarketsForexRoute
+  '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
+  '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -69,17 +97,24 @@ export interface FileRoutesByTo {
   '/matrix': typeof MatrixRoute
   '/performance': typeof PerformanceRoute
   '/signals': typeof SignalsRouteWithChildren
+  '/markets/forex': typeof MarketsForexRoute
+  '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
+  '/markets': typeof MarketsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/markets': typeof MarketsRouteWithChildren
   '/matrix': typeof MatrixRoute
   '/performance': typeof PerformanceRoute
   '/signals': typeof SignalsRouteWithChildren
+  '/markets/forex': typeof MarketsForexRoute
+  '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
+  '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,10 +122,14 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/markets'
     | '/matrix'
     | '/performance'
     | '/signals'
+    | '/markets/forex'
+    | '/markets/synthetics'
     | '/signals/$id'
+    | '/markets/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -99,22 +138,30 @@ export interface FileRouteTypes {
     | '/matrix'
     | '/performance'
     | '/signals'
+    | '/markets/forex'
+    | '/markets/synthetics'
     | '/signals/$id'
+    | '/markets'
   id:
     | '__root__'
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/markets'
     | '/matrix'
     | '/performance'
     | '/signals'
+    | '/markets/forex'
+    | '/markets/synthetics'
     | '/signals/$id'
+    | '/markets/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
+  MarketsRoute: typeof MarketsRouteWithChildren
   MatrixRoute: typeof MatrixRoute
   PerformanceRoute: typeof PerformanceRoute
   SignalsRoute: typeof SignalsRouteWithChildren
@@ -143,6 +190,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/markets': {
+      id: '/markets'
+      path: '/markets'
+      fullPath: '/markets'
+      preLoaderRoute: typeof MarketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/matrix': {
       id: '/matrix'
       path: '/matrix'
@@ -164,6 +218,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignalsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/markets/': {
+      id: '/markets/'
+      path: '/'
+      fullPath: '/markets/'
+      preLoaderRoute: typeof MarketsIndexRouteImport
+      parentRoute: typeof MarketsRoute
+    }
+    '/markets/forex': {
+      id: '/markets/forex'
+      path: '/forex'
+      fullPath: '/markets/forex'
+      preLoaderRoute: typeof MarketsForexRouteImport
+      parentRoute: typeof MarketsRoute
+    }
+    '/markets/synthetics': {
+      id: '/markets/synthetics'
+      path: '/synthetics'
+      fullPath: '/markets/synthetics'
+      preLoaderRoute: typeof MarketsSyntheticsRouteImport
+      parentRoute: typeof MarketsRoute
+    }
     '/signals/$id': {
       id: '/signals/$id'
       path: '/$id'
@@ -173,6 +248,21 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface MarketsRouteChildren {
+  MarketsForexRoute: typeof MarketsForexRoute
+  MarketsSyntheticsRoute: typeof MarketsSyntheticsRoute
+  MarketsIndexRoute: typeof MarketsIndexRoute
+}
+
+const MarketsRouteChildren: MarketsRouteChildren = {
+  MarketsForexRoute: MarketsForexRoute,
+  MarketsSyntheticsRoute: MarketsSyntheticsRoute,
+  MarketsIndexRoute: MarketsIndexRoute,
+}
+
+const MarketsRouteWithChildren =
+  MarketsRoute._addFileChildren(MarketsRouteChildren)
 
 interface SignalsRouteChildren {
   SignalsIdRoute: typeof SignalsIdRoute
@@ -189,6 +279,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
+  MarketsRoute: MarketsRouteWithChildren,
   MatrixRoute: MatrixRoute,
   PerformanceRoute: PerformanceRoute,
   SignalsRoute: SignalsRouteWithChildren,
