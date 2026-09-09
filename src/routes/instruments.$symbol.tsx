@@ -89,7 +89,7 @@ function InstrumentContent() {
       <PageHeader
         eyebrow={CATEGORY_LABEL[instrument.category] ?? instrument.category}
         title={`${instrument.symbol} · ${instrument.display_name}`}
-        description={instrument.description ?? undefined}
+        {...(instrument.description ? { description: instrument.description } : {})}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <RiskBadge rating={instrument.risk_rating} />
