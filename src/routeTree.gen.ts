@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcademyRouteImport } from './routes/academy'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as LegalRouteImport } from './routes/legal'
@@ -22,6 +23,9 @@ import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as AcademyIndexRouteImport } from './routes/academy.index'
 import { Route as AcademySlugRouteImport } from './routes/academy.$slug'
+import { Route as AccountIndexRouteImport } from './routes/account.index'
+import { Route as AccountAlertsRouteImport } from './routes/account.alerts'
+import { Route as AccountSubscriptionRouteImport } from './routes/account.subscription'
 import { Route as InstrumentsSymbolRouteImport } from './routes/instruments.$symbol'
 import { Route as MarketsIndexRouteImport } from './routes/markets.index'
 import { Route as MarketsForexRouteImport } from './routes/markets.forex'
@@ -36,6 +40,11 @@ const IndexRoute = IndexRouteImport.update({
 const AcademyRoute = AcademyRouteImport.update({
   id: '/academy',
   path: '/academy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -93,6 +102,21 @@ const AcademySlugRoute = AcademySlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => AcademyRoute,
 } as any)
+const AccountIndexRoute = AccountIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AccountRoute,
+} as any)
+const AccountAlertsRoute = AccountAlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
+  getParentRoute: () => AccountRoute,
+} as any)
+const AccountSubscriptionRoute = AccountSubscriptionRouteImport.update({
+  id: '/subscription',
+  path: '/subscription',
+  getParentRoute: () => AccountRoute,
+} as any)
 const InstrumentsSymbolRoute = InstrumentsSymbolRouteImport.update({
   id: '/instruments/$symbol',
   path: '/instruments/$symbol',
@@ -122,6 +146,7 @@ const SignalsIdRoute = SignalsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/academy': typeof AcademyRouteWithChildren
+  '/account': typeof AccountRouteWithChildren
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/legal': typeof LegalRoute
@@ -132,11 +157,14 @@ export interface FileRoutesByFullPath {
   '/signals': typeof SignalsRouteWithChildren
   '/watchlist': typeof WatchlistRoute
   '/academy/$slug': typeof AcademySlugRoute
+  '/account/alerts': typeof AccountAlertsRoute
+  '/account/subscription': typeof AccountSubscriptionRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
   '/academy/': typeof AcademyIndexRoute
+  '/account/': typeof AccountIndexRoute
   '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -150,17 +178,21 @@ export interface FileRoutesByTo {
   '/signals': typeof SignalsRouteWithChildren
   '/watchlist': typeof WatchlistRoute
   '/academy/$slug': typeof AcademySlugRoute
+  '/account/alerts': typeof AccountAlertsRoute
+  '/account/subscription': typeof AccountSubscriptionRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
   '/academy': typeof AcademyIndexRoute
+  '/account': typeof AccountIndexRoute
   '/markets': typeof MarketsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/academy': typeof AcademyRouteWithChildren
+  '/account': typeof AccountRouteWithChildren
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/legal': typeof LegalRoute
@@ -171,11 +203,14 @@ export interface FileRoutesById {
   '/signals': typeof SignalsRouteWithChildren
   '/watchlist': typeof WatchlistRoute
   '/academy/$slug': typeof AcademySlugRoute
+  '/account/alerts': typeof AccountAlertsRoute
+  '/account/subscription': typeof AccountSubscriptionRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
   '/academy/': typeof AcademyIndexRoute
+  '/account/': typeof AccountIndexRoute
   '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRouteTypes {
@@ -183,6 +218,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/academy'
+    | '/account'
     | '/auth'
     | '/dashboard'
     | '/legal'
@@ -193,11 +229,14 @@ export interface FileRouteTypes {
     | '/signals'
     | '/watchlist'
     | '/academy/$slug'
+    | '/account/alerts'
+    | '/account/subscription'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
     | '/signals/$id'
     | '/academy/'
+    | '/account/'
     | '/markets/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -211,16 +250,20 @@ export interface FileRouteTypes {
     | '/signals'
     | '/watchlist'
     | '/academy/$slug'
+    | '/account/alerts'
+    | '/account/subscription'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
     | '/signals/$id'
     | '/academy'
+    | '/account'
     | '/markets'
   id:
     | '__root__'
     | '/'
     | '/academy'
+    | '/account'
     | '/auth'
     | '/dashboard'
     | '/legal'
@@ -231,17 +274,21 @@ export interface FileRouteTypes {
     | '/signals'
     | '/watchlist'
     | '/academy/$slug'
+    | '/account/alerts'
+    | '/account/subscription'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
     | '/signals/$id'
     | '/academy/'
+    | '/account/'
     | '/markets/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcademyRoute: typeof AcademyRouteWithChildren
+  AccountRoute: typeof AccountRouteWithChildren
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
   LegalRoute: typeof LegalRoute
@@ -268,6 +315,13 @@ declare module '@tanstack/react-router' {
       path: '/academy'
       fullPath: '/academy'
       preLoaderRoute: typeof AcademyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -347,6 +401,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AcademySlugRouteImport
       parentRoute: typeof AcademyRoute
     }
+    '/account/': {
+      id: '/account/'
+      path: '/'
+      fullPath: '/account/'
+      preLoaderRoute: typeof AccountIndexRouteImport
+      parentRoute: typeof AccountRoute
+    }
+    '/account/alerts': {
+      id: '/account/alerts'
+      path: '/alerts'
+      fullPath: '/account/alerts'
+      preLoaderRoute: typeof AccountAlertsRouteImport
+      parentRoute: typeof AccountRoute
+    }
+    '/account/subscription': {
+      id: '/account/subscription'
+      path: '/subscription'
+      fullPath: '/account/subscription'
+      preLoaderRoute: typeof AccountSubscriptionRouteImport
+      parentRoute: typeof AccountRoute
+    }
     '/instruments/$symbol': {
       id: '/instruments/$symbol'
       path: '/instruments/$symbol'
@@ -398,6 +473,21 @@ const AcademyRouteChildren: AcademyRouteChildren = {
 const AcademyRouteWithChildren =
   AcademyRoute._addFileChildren(AcademyRouteChildren)
 
+interface AccountRouteChildren {
+  AccountAlertsRoute: typeof AccountAlertsRoute
+  AccountSubscriptionRoute: typeof AccountSubscriptionRoute
+  AccountIndexRoute: typeof AccountIndexRoute
+}
+
+const AccountRouteChildren: AccountRouteChildren = {
+  AccountAlertsRoute: AccountAlertsRoute,
+  AccountSubscriptionRoute: AccountSubscriptionRoute,
+  AccountIndexRoute: AccountIndexRoute,
+}
+
+const AccountRouteWithChildren =
+  AccountRoute._addFileChildren(AccountRouteChildren)
+
 interface MarketsRouteChildren {
   MarketsForexRoute: typeof MarketsForexRoute
   MarketsSyntheticsRoute: typeof MarketsSyntheticsRoute
@@ -427,6 +517,7 @@ const SignalsRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcademyRoute: AcademyRouteWithChildren,
+  AccountRoute: AccountRouteWithChildren,
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
   LegalRoute: LegalRoute,

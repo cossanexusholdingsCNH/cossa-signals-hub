@@ -57,7 +57,7 @@ function AcademyIndex() {
               if (items.length === 0) return null;
               return (
                 <Panel key={cat.id}>
-                  <PanelHeader title={cat.name} subtitle={cat.description ?? undefined} />
+                  <PanelHeader title={cat.name} {...(cat.description ? { subtitle: cat.description } : {})} />
                   <ul className="divide-y divide-border/60">
                     {items.map((a) => (
                       <li key={a.id}>

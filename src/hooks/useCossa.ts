@@ -623,7 +623,20 @@ export function useModels() {
 export function useUpdatePlatformControls() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
+    mutationFn: async ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: {
+        signals_enabled?: boolean;
+        alerts_enabled?: boolean;
+        maintenance_mode?: boolean;
+        emergency_message?: string | null;
+        stale_threshold_seconds?: number;
+        minimum_sample_size?: number;
+      };
+    }) => {
       const { error } = await supabase.from("platform_controls").update(patch).eq("id", id);
       if (error) throw error;
     },

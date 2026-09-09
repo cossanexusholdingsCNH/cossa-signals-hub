@@ -204,7 +204,6 @@ export type Database = {
           created_at: string
           id: string
           instrument_id: string | null
-          is_demo: boolean
           last_received_at: string | null
           latency_ms: number | null
           provider: string
@@ -215,7 +214,6 @@ export type Database = {
           created_at?: string
           id?: string
           instrument_id?: string | null
-          is_demo?: boolean
           last_received_at?: string | null
           latency_ms?: number | null
           provider: string
@@ -226,7 +224,6 @@ export type Database = {
           created_at?: string
           id?: string
           instrument_id?: string | null
-          is_demo?: boolean
           last_received_at?: string | null
           latency_ms?: number | null
           provider?: string
@@ -638,7 +635,6 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          is_demo: boolean
           last_heartbeat: string | null
           message: string | null
           metadata: Json | null
@@ -649,7 +645,6 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
-          is_demo?: boolean
           last_heartbeat?: string | null
           message?: string | null
           metadata?: Json | null
@@ -660,7 +655,6 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
-          is_demo?: boolean
           last_heartbeat?: string | null
           message?: string | null
           metadata?: Json | null

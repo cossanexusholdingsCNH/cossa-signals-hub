@@ -34,7 +34,7 @@ function LegalPage() {
         />
 
         <div className="space-y-4">
-          <Panel id="risk">
+          <Panel>
             <PanelHeader title="Risk disclosure" />
             <div className="space-y-3 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
               <p>{RISK_DISCLAIMER}</p>
@@ -51,7 +51,7 @@ function LegalPage() {
             </div>
           </Panel>
 
-          <Panel id="terms">
+          <Panel>
             <PanelHeader title="Terms of service" />
             <div className="space-y-3 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
               <p>
@@ -74,7 +74,7 @@ function LegalPage() {
             </div>
           </Panel>
 
-          <Panel id="privacy">
+          <Panel>
             <PanelHeader title="Privacy policy" />
             <div className="space-y-3 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
               <p>
