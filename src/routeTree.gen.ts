@@ -28,9 +28,14 @@ import { Route as AccountIndexRouteImport } from './routes/account.index'
 import { Route as AccountAlertsRouteImport } from './routes/account.alerts'
 import { Route as AccountSubscriptionRouteImport } from './routes/account.subscription'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminAuditRouteImport } from './routes/admin.audit'
+import { Route as AdminBillingRouteImport } from './routes/admin.billing'
 import { Route as AdminInstrumentsRouteImport } from './routes/admin.instruments'
+import { Route as AdminPerformanceRouteImport } from './routes/admin.performance'
 import { Route as AdminSignalsRouteImport } from './routes/admin.signals'
 import { Route as AdminStrategiesRouteImport } from './routes/admin.strategies'
+import { Route as AdminSystemRouteImport } from './routes/admin.system'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as InstrumentsSymbolRouteImport } from './routes/instruments.$symbol'
 import { Route as MarketsIndexRouteImport } from './routes/markets.index'
 import { Route as MarketsForexRouteImport } from './routes/markets.forex'
@@ -132,9 +137,24 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminBillingRoute = AdminBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminInstrumentsRoute = AdminInstrumentsRouteImport.update({
   id: '/instruments',
   path: '/instruments',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPerformanceRoute = AdminPerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminSignalsRoute = AdminSignalsRouteImport.update({
@@ -145,6 +165,16 @@ const AdminSignalsRoute = AdminSignalsRouteImport.update({
 const AdminStrategiesRoute = AdminStrategiesRouteImport.update({
   id: '/strategies',
   path: '/strategies',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSystemRoute = AdminSystemRouteImport.update({
+  id: '/system',
+  path: '/system',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => AdminRoute,
 } as any)
 const InstrumentsSymbolRoute = InstrumentsSymbolRouteImport.update({
@@ -190,9 +220,14 @@ export interface FileRoutesByFullPath {
   '/academy/$slug': typeof AcademySlugRoute
   '/account/alerts': typeof AccountAlertsRoute
   '/account/subscription': typeof AccountSubscriptionRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/instruments': typeof AdminInstrumentsRoute
+  '/admin/performance': typeof AdminPerformanceRoute
   '/admin/signals': typeof AdminSignalsRoute
   '/admin/strategies': typeof AdminStrategiesRoute
+  '/admin/system': typeof AdminSystemRoute
+  '/admin/users': typeof AdminUsersRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
@@ -215,9 +250,14 @@ export interface FileRoutesByTo {
   '/academy/$slug': typeof AcademySlugRoute
   '/account/alerts': typeof AccountAlertsRoute
   '/account/subscription': typeof AccountSubscriptionRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/instruments': typeof AdminInstrumentsRoute
+  '/admin/performance': typeof AdminPerformanceRoute
   '/admin/signals': typeof AdminSignalsRoute
   '/admin/strategies': typeof AdminStrategiesRoute
+  '/admin/system': typeof AdminSystemRoute
+  '/admin/users': typeof AdminUsersRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
@@ -245,9 +285,14 @@ export interface FileRoutesById {
   '/academy/$slug': typeof AcademySlugRoute
   '/account/alerts': typeof AccountAlertsRoute
   '/account/subscription': typeof AccountSubscriptionRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/instruments': typeof AdminInstrumentsRoute
+  '/admin/performance': typeof AdminPerformanceRoute
   '/admin/signals': typeof AdminSignalsRoute
   '/admin/strategies': typeof AdminStrategiesRoute
+  '/admin/system': typeof AdminSystemRoute
+  '/admin/users': typeof AdminUsersRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
@@ -276,9 +321,14 @@ export interface FileRouteTypes {
     | '/academy/$slug'
     | '/account/alerts'
     | '/account/subscription'
+    | '/admin/audit'
+    | '/admin/billing'
     | '/admin/instruments'
+    | '/admin/performance'
     | '/admin/signals'
     | '/admin/strategies'
+    | '/admin/system'
+    | '/admin/users'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
@@ -301,9 +351,14 @@ export interface FileRouteTypes {
     | '/academy/$slug'
     | '/account/alerts'
     | '/account/subscription'
+    | '/admin/audit'
+    | '/admin/billing'
     | '/admin/instruments'
+    | '/admin/performance'
     | '/admin/signals'
     | '/admin/strategies'
+    | '/admin/system'
+    | '/admin/users'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
@@ -330,9 +385,14 @@ export interface FileRouteTypes {
     | '/academy/$slug'
     | '/account/alerts'
     | '/account/subscription'
+    | '/admin/audit'
+    | '/admin/billing'
     | '/admin/instruments'
+    | '/admin/performance'
     | '/admin/signals'
     | '/admin/strategies'
+    | '/admin/system'
+    | '/admin/users'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
@@ -495,11 +555,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/billing': {
+      id: '/admin/billing'
+      path: '/billing'
+      fullPath: '/admin/billing'
+      preLoaderRoute: typeof AdminBillingRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/instruments': {
       id: '/admin/instruments'
       path: '/instruments'
       fullPath: '/admin/instruments'
       preLoaderRoute: typeof AdminInstrumentsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/performance': {
+      id: '/admin/performance'
+      path: '/performance'
+      fullPath: '/admin/performance'
+      preLoaderRoute: typeof AdminPerformanceRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/signals': {
@@ -514,6 +595,20 @@ declare module '@tanstack/react-router' {
       path: '/strategies'
       fullPath: '/admin/strategies'
       preLoaderRoute: typeof AdminStrategiesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/system': {
+      id: '/admin/system'
+      path: '/system'
+      fullPath: '/admin/system'
+      preLoaderRoute: typeof AdminSystemRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRoute
     }
     '/instruments/$symbol': {
@@ -583,16 +678,26 @@ const AccountRouteWithChildren =
   AccountRoute._addFileChildren(AccountRouteChildren)
 
 interface AdminRouteChildren {
+  AdminAuditRoute: typeof AdminAuditRoute
+  AdminBillingRoute: typeof AdminBillingRoute
   AdminInstrumentsRoute: typeof AdminInstrumentsRoute
+  AdminPerformanceRoute: typeof AdminPerformanceRoute
   AdminSignalsRoute: typeof AdminSignalsRoute
   AdminStrategiesRoute: typeof AdminStrategiesRoute
+  AdminSystemRoute: typeof AdminSystemRoute
+  AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAuditRoute: AdminAuditRoute,
+  AdminBillingRoute: AdminBillingRoute,
   AdminInstrumentsRoute: AdminInstrumentsRoute,
+  AdminPerformanceRoute: AdminPerformanceRoute,
   AdminSignalsRoute: AdminSignalsRoute,
   AdminStrategiesRoute: AdminStrategiesRoute,
+  AdminSystemRoute: AdminSystemRoute,
+  AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
