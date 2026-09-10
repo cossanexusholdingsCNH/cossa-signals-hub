@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcademyRouteImport } from './routes/academy'
 import { Route as AccountRouteImport } from './routes/account'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as LegalRouteImport } from './routes/legal'
@@ -26,6 +27,15 @@ import { Route as AcademySlugRouteImport } from './routes/academy.$slug'
 import { Route as AccountIndexRouteImport } from './routes/account.index'
 import { Route as AccountAlertsRouteImport } from './routes/account.alerts'
 import { Route as AccountSubscriptionRouteImport } from './routes/account.subscription'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminAuditRouteImport } from './routes/admin.audit'
+import { Route as AdminBillingRouteImport } from './routes/admin.billing'
+import { Route as AdminInstrumentsRouteImport } from './routes/admin.instruments'
+import { Route as AdminPerformanceRouteImport } from './routes/admin.performance'
+import { Route as AdminSignalsRouteImport } from './routes/admin.signals'
+import { Route as AdminStrategiesRouteImport } from './routes/admin.strategies'
+import { Route as AdminSystemRouteImport } from './routes/admin.system'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as InstrumentsSymbolRouteImport } from './routes/instruments.$symbol'
 import { Route as MarketsIndexRouteImport } from './routes/markets.index'
 import { Route as MarketsForexRouteImport } from './routes/markets.forex'
@@ -45,6 +55,11 @@ const AcademyRoute = AcademyRouteImport.update({
 const AccountRoute = AccountRouteImport.update({
   id: '/account',
   path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -117,6 +132,51 @@ const AccountSubscriptionRoute = AccountSubscriptionRouteImport.update({
   path: '/subscription',
   getParentRoute: () => AccountRoute,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminBillingRoute = AdminBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminInstrumentsRoute = AdminInstrumentsRouteImport.update({
+  id: '/instruments',
+  path: '/instruments',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPerformanceRoute = AdminPerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSignalsRoute = AdminSignalsRouteImport.update({
+  id: '/signals',
+  path: '/signals',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminStrategiesRoute = AdminStrategiesRouteImport.update({
+  id: '/strategies',
+  path: '/strategies',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSystemRoute = AdminSystemRouteImport.update({
+  id: '/system',
+  path: '/system',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminRoute,
+} as any)
 const InstrumentsSymbolRoute = InstrumentsSymbolRouteImport.update({
   id: '/instruments/$symbol',
   path: '/instruments/$symbol',
@@ -147,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/academy': typeof AcademyRouteWithChildren
   '/account': typeof AccountRouteWithChildren
+  '/admin': typeof AdminRouteWithChildren
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/legal': typeof LegalRoute
@@ -159,12 +220,21 @@ export interface FileRoutesByFullPath {
   '/academy/$slug': typeof AcademySlugRoute
   '/account/alerts': typeof AccountAlertsRoute
   '/account/subscription': typeof AccountSubscriptionRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/billing': typeof AdminBillingRoute
+  '/admin/instruments': typeof AdminInstrumentsRoute
+  '/admin/performance': typeof AdminPerformanceRoute
+  '/admin/signals': typeof AdminSignalsRoute
+  '/admin/strategies': typeof AdminStrategiesRoute
+  '/admin/system': typeof AdminSystemRoute
+  '/admin/users': typeof AdminUsersRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
   '/academy/': typeof AcademyIndexRoute
   '/account/': typeof AccountIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -180,12 +250,21 @@ export interface FileRoutesByTo {
   '/academy/$slug': typeof AcademySlugRoute
   '/account/alerts': typeof AccountAlertsRoute
   '/account/subscription': typeof AccountSubscriptionRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/billing': typeof AdminBillingRoute
+  '/admin/instruments': typeof AdminInstrumentsRoute
+  '/admin/performance': typeof AdminPerformanceRoute
+  '/admin/signals': typeof AdminSignalsRoute
+  '/admin/strategies': typeof AdminStrategiesRoute
+  '/admin/system': typeof AdminSystemRoute
+  '/admin/users': typeof AdminUsersRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
   '/academy': typeof AcademyIndexRoute
   '/account': typeof AccountIndexRoute
+  '/admin': typeof AdminIndexRoute
   '/markets': typeof MarketsIndexRoute
 }
 export interface FileRoutesById {
@@ -193,6 +272,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/academy': typeof AcademyRouteWithChildren
   '/account': typeof AccountRouteWithChildren
+  '/admin': typeof AdminRouteWithChildren
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/legal': typeof LegalRoute
@@ -205,12 +285,21 @@ export interface FileRoutesById {
   '/academy/$slug': typeof AcademySlugRoute
   '/account/alerts': typeof AccountAlertsRoute
   '/account/subscription': typeof AccountSubscriptionRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/billing': typeof AdminBillingRoute
+  '/admin/instruments': typeof AdminInstrumentsRoute
+  '/admin/performance': typeof AdminPerformanceRoute
+  '/admin/signals': typeof AdminSignalsRoute
+  '/admin/strategies': typeof AdminStrategiesRoute
+  '/admin/system': typeof AdminSystemRoute
+  '/admin/users': typeof AdminUsersRoute
   '/instruments/$symbol': typeof InstrumentsSymbolRoute
   '/markets/forex': typeof MarketsForexRoute
   '/markets/synthetics': typeof MarketsSyntheticsRoute
   '/signals/$id': typeof SignalsIdRoute
   '/academy/': typeof AcademyIndexRoute
   '/account/': typeof AccountIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/markets/': typeof MarketsIndexRoute
 }
 export interface FileRouteTypes {
@@ -219,6 +308,7 @@ export interface FileRouteTypes {
     | '/'
     | '/academy'
     | '/account'
+    | '/admin'
     | '/auth'
     | '/dashboard'
     | '/legal'
@@ -231,12 +321,21 @@ export interface FileRouteTypes {
     | '/academy/$slug'
     | '/account/alerts'
     | '/account/subscription'
+    | '/admin/audit'
+    | '/admin/billing'
+    | '/admin/instruments'
+    | '/admin/performance'
+    | '/admin/signals'
+    | '/admin/strategies'
+    | '/admin/system'
+    | '/admin/users'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
     | '/signals/$id'
     | '/academy/'
     | '/account/'
+    | '/admin/'
     | '/markets/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -252,18 +351,28 @@ export interface FileRouteTypes {
     | '/academy/$slug'
     | '/account/alerts'
     | '/account/subscription'
+    | '/admin/audit'
+    | '/admin/billing'
+    | '/admin/instruments'
+    | '/admin/performance'
+    | '/admin/signals'
+    | '/admin/strategies'
+    | '/admin/system'
+    | '/admin/users'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
     | '/signals/$id'
     | '/academy'
     | '/account'
+    | '/admin'
     | '/markets'
   id:
     | '__root__'
     | '/'
     | '/academy'
     | '/account'
+    | '/admin'
     | '/auth'
     | '/dashboard'
     | '/legal'
@@ -276,12 +385,21 @@ export interface FileRouteTypes {
     | '/academy/$slug'
     | '/account/alerts'
     | '/account/subscription'
+    | '/admin/audit'
+    | '/admin/billing'
+    | '/admin/instruments'
+    | '/admin/performance'
+    | '/admin/signals'
+    | '/admin/strategies'
+    | '/admin/system'
+    | '/admin/users'
     | '/instruments/$symbol'
     | '/markets/forex'
     | '/markets/synthetics'
     | '/signals/$id'
     | '/academy/'
     | '/account/'
+    | '/admin/'
     | '/markets/'
   fileRoutesById: FileRoutesById
 }
@@ -289,6 +407,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcademyRoute: typeof AcademyRouteWithChildren
   AccountRoute: typeof AccountRouteWithChildren
+  AdminRoute: typeof AdminRouteWithChildren
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
   LegalRoute: typeof LegalRoute
@@ -322,6 +441,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/account'
       preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -422,6 +548,69 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountSubscriptionRouteImport
       parentRoute: typeof AccountRoute
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/billing': {
+      id: '/admin/billing'
+      path: '/billing'
+      fullPath: '/admin/billing'
+      preLoaderRoute: typeof AdminBillingRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/instruments': {
+      id: '/admin/instruments'
+      path: '/instruments'
+      fullPath: '/admin/instruments'
+      preLoaderRoute: typeof AdminInstrumentsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/performance': {
+      id: '/admin/performance'
+      path: '/performance'
+      fullPath: '/admin/performance'
+      preLoaderRoute: typeof AdminPerformanceRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/signals': {
+      id: '/admin/signals'
+      path: '/signals'
+      fullPath: '/admin/signals'
+      preLoaderRoute: typeof AdminSignalsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/strategies': {
+      id: '/admin/strategies'
+      path: '/strategies'
+      fullPath: '/admin/strategies'
+      preLoaderRoute: typeof AdminStrategiesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/system': {
+      id: '/admin/system'
+      path: '/system'
+      fullPath: '/admin/system'
+      preLoaderRoute: typeof AdminSystemRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/instruments/$symbol': {
       id: '/instruments/$symbol'
       path: '/instruments/$symbol'
@@ -488,6 +677,32 @@ const AccountRouteChildren: AccountRouteChildren = {
 const AccountRouteWithChildren =
   AccountRoute._addFileChildren(AccountRouteChildren)
 
+interface AdminRouteChildren {
+  AdminAuditRoute: typeof AdminAuditRoute
+  AdminBillingRoute: typeof AdminBillingRoute
+  AdminInstrumentsRoute: typeof AdminInstrumentsRoute
+  AdminPerformanceRoute: typeof AdminPerformanceRoute
+  AdminSignalsRoute: typeof AdminSignalsRoute
+  AdminStrategiesRoute: typeof AdminStrategiesRoute
+  AdminSystemRoute: typeof AdminSystemRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminAuditRoute: AdminAuditRoute,
+  AdminBillingRoute: AdminBillingRoute,
+  AdminInstrumentsRoute: AdminInstrumentsRoute,
+  AdminPerformanceRoute: AdminPerformanceRoute,
+  AdminSignalsRoute: AdminSignalsRoute,
+  AdminStrategiesRoute: AdminStrategiesRoute,
+  AdminSystemRoute: AdminSystemRoute,
+  AdminUsersRoute: AdminUsersRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 interface MarketsRouteChildren {
   MarketsForexRoute: typeof MarketsForexRoute
   MarketsSyntheticsRoute: typeof MarketsSyntheticsRoute
@@ -518,6 +733,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcademyRoute: AcademyRouteWithChildren,
   AccountRoute: AccountRouteWithChildren,
+  AdminRoute: AdminRouteWithChildren,
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
   LegalRoute: LegalRoute,
