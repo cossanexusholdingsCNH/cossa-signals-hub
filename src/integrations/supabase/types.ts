@@ -1181,6 +1181,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_view_signal: {
+        Args: { _is_demo: boolean; _opened_at: string }
+        Returns: boolean
+      }
+      current_tier: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["subscription_tier"]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
