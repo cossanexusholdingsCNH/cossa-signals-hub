@@ -38,6 +38,18 @@ jobs:
       - name: Run deterministic tests
         run: bun run test
 
+      - name: Normalize execution-engine formatting
+        run: >-
+          bunx prettier --write
+          src/server/market-data/deriv.ts
+          src/server/signals/deterministic-engine.ts
+          src/server/signals/deterministic-engine.test.ts
+          src/server/signals/deriv-signal-pipeline.ts
+          src/server/signals/persist-pipeline.server.ts
+          src/server/execution/risk-engine.ts
+          src/server/execution/risk-engine.test.ts
+          src/server/execution/paper-coordinator.server.ts
+
       - name: Check execution-engine lint
         run: >-
           bunx eslint
