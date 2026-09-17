@@ -38,9 +38,9 @@ jobs:
       - name: Run deterministic tests
         run: bun run test
 
-      - name: Normalize execution-engine formatting
+      - name: Verify execution-engine formatting
         run: >-
-          bunx prettier --write
+          bunx prettier --check
           src/server/market-data/deriv.ts
           src/server/signals/deterministic-engine.ts
           src/server/signals/deterministic-engine.test.ts
