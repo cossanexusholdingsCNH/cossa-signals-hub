@@ -36,9 +36,9 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
   const maximumMarketDataAgeMs = request.maximumMarketDataAgeMs ?? 120_000;
   const minimumConfidence = request.minimumConfidence ?? 70;
 
-  const orderResult = await (supabaseAdmin as any)
+  const orderResult = await supabaseAdmin
     .from('execution_orders')
-    .select('id,user_id,trading_account_id,instrument_id,execution_mode,status,requested_entry,stop_loss,risk_pct,idempotency_key,metadata')
+    .select('id,user_id,trading_account_id,instrument_id,execution_mode,status,requested_entry,stop_loss,risk_pct,idempotency_key,metadata,requested_amount')
     .eq('id', request.orderId)
     .eq('user_id', request.userId)
     .single();
@@ -48,7 +48,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
   if (order.execution_mode !== 'paper_auto') throw new Error('Only paper_auto orders can use the paper coordinator');
   if (order.status !== 'approved') throw new Error(`Paper order is not awaiting risk execution: ${order.status}`);
 
-  const accountResult = await (supabaseAdmin as any)
+  const accountResult = await supabaseAdmin
     .from('trading_accounts')
     .select('id,user_id,account_environment,execution_mode,enabled,emergency_stop,max_risk_per_trade_pct,max_daily_loss_pct,max_open_positions')
     .eq('id', order.trading_account_id)
@@ -60,7 +60,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
     throw new Error('Paper coordinator cannot operate on a live or non-paper account');
   }
 
-  const snapshotResult = await (supabaseAdmin as any)
+  const snapshotResult = await supabaseAdmin
     .from('trading_account_snapshots')
     .select('equity,balance,open_positions,captured_at')
     .eq('trading_account_id', account.id)
@@ -73,7 +73,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
   if (snapshotAgeMs < 0 || snapshotAgeMs > maximumSnapshotAgeMs) throw new Error('Account snapshot is stale; execution fails closed');
 
   const tradingDate = now.toISOString().slice(0, 10);
-  const dailyResult = await (supabaseAdmin as any)
+  const dailyResult = await supabaseAdmin
     .from('trading_daily_risk_state')
     .select('start_of_day_equity,loss_limit_triggered')
     .eq('trading_account_id', account.id)
@@ -81,7 +81,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
     .maybeSingle();
   if (dailyResult.error || !dailyResult.data) throw new Error('Missing daily risk baseline; execution fails closed');
 
-  const duplicateResult = await (supabaseAdmin as any)
+  const duplicateResult = await supabaseAdmin
     .from('execution_orders')
     .select('id')
     .eq('idempotency_key', order.idempotency_key)
@@ -89,16 +89,17 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
     .limit(1);
   if (duplicateResult.error) throw new Error(`Duplicate-order check failed: ${duplicateResult.error.message}`);
 
-  const openResult = await (supabaseAdmin as any)
+  const openResult = await supabaseAdmin
     .from('execution_orders')
     .select('id', { count: 'exact', head: true })
     .eq('trading_account_id', account.id)
     .in('status', [...OPEN_STATUSES]);
   if (openResult.error) throw new Error(`Open-position check failed: ${openResult.error.message}`);
 
-  const confidence = Number(order.metadata?.confidence ?? 0);
-  const marketGeneratedAt = order.metadata?.generated_at ?? order.metadata?.signal_generated_at;
-  const marketDataAgeMs = marketGeneratedAt
+  const metadata = order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata) ? order.metadata : {};
+  const confidence = Number(metadata['confidence'] ?? 0);
+  const marketGeneratedAt = metadata['generated_at'] ?? metadata['signal_generated_at'];
+  const marketDataAgeMs = typeof marketGeneratedAt === 'string'
     ? now.getTime() - new Date(marketGeneratedAt).getTime()
     : Number.POSITIVE_INFINITY;
 
@@ -126,7 +127,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
     positionStep: request.positionStep,
   });
 
-  const { data: riskRow, error: riskError } = await (supabaseAdmin as any)
+  const { data: riskRow, error: riskError } = await supabaseAdmin
     .from('execution_risk_checks')
     .insert({
       order_id: order.id,
@@ -160,8 +161,8 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
     .single();
   if (riskError || !riskRow?.id) throw new Error(`Unable to persist execution risk check: ${riskError?.message ?? 'missing id'}`);
 
-  const nextStatus = decision.approved ? 'submitted' : 'rejected';
-  const { error: updateError } = await (supabaseAdmin as any)
+  const nextStatus: 'submitted' | 'rejected' = decision.approved ? 'submitted' : 'rejected';
+  const { error: updateError } = await supabaseAdmin
     .from('execution_orders')
     .update({
       status: nextStatus,
@@ -170,7 +171,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
       rejection_reason: decision.approved ? null : decision.rejectionReasons.join('; '),
       submitted_at: decision.approved ? now.toISOString() : null,
       metadata: {
-        ...(order.metadata ?? {}),
+        ...metadata,
         risk_check_id: riskRow.id,
         risk_approved: decision.approved,
         calculated_position_size: decision.positionSize,
@@ -181,7 +182,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
     .eq('status', 'approved');
   if (updateError) throw new Error(`Unable to transition paper order: ${updateError.message}`);
 
-  await (supabaseAdmin as any).from('execution_events').insert({
+  const { error: eventError } = await supabaseAdmin.from('execution_events').insert({
     order_id: order.id,
     event_type: decision.approved ? 'paper_risk_approved' : 'paper_risk_rejected',
     old_status: 'approved',
@@ -192,6 +193,7 @@ export async function evaluatePaperExecution(request: PaperExecutionRequest): Pr
       rejection_reasons: decision.rejectionReasons,
     },
   });
+  if (eventError) throw new Error(`Unable to persist execution event: ${eventError.message}`);
 
   return {
     orderId: order.id,
