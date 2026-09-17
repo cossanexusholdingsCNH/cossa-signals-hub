@@ -153,8 +153,8 @@ async function createPaperOrder(
     .maybeSingle();
   if (existing.data?.id) return existing.data.id as string;
 
-  // requested_amount is intentionally a paper unit, not a real-money stake.
-  // Position sizing will replace this with a risk-derived amount after account-equity wiring.
+  // requested_amount is a temporary paper placeholder only. The fail-closed
+  // risk coordinator replaces it with the calculated position size before submission.
   const { data, error } = await (supabaseAdmin as any)
     .from('execution_orders')
     .insert({
@@ -176,9 +176,14 @@ async function createPaperOrder(
       confirmation_required: false,
       metadata: {
         signal_evidence_fingerprint: evidence.fingerprint,
+        provider_id: evidence.providerId,
         provider_symbol: candidate.providerSymbol,
         timeframe: candidate.timeframe,
         confidence: candidate.confidence,
+        signal_generated_at: evidence.generatedAt,
+        market_data_from: evidence.dataFrom,
+        market_data_to: evidence.dataTo,
+        engine_version: evidence.engineVersion,
         paper_only: true,
       },
     })
