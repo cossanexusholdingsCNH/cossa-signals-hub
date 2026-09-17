@@ -41,7 +41,7 @@ async function persistCandles(candles: Awaited<ReturnType<typeof runDerivSignalP
     metadata: { source_epoch: c.sourceEpoch },
   }));
 
-  const { error } = await (supabaseAdmin as any)
+  const { error } = await supabaseAdmin
     .from('market_candles')
     .upsert(rows, { onConflict: 'instrument_id,provider_id,timeframe,open_time', ignoreDuplicates: true });
   if (error) throw new Error(`Unable to persist market candles: ${error.message}`);
@@ -75,7 +75,7 @@ async function persistEvidence(evidence: SignalEvidence): Promise<{ id: string; 
     generated_at: evidence.generatedAt,
   };
 
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('signal_evidence')
     .upsert(row, { onConflict: 'fingerprint', ignoreDuplicates: true })
     .select('id')
@@ -83,7 +83,7 @@ async function persistEvidence(evidence: SignalEvidence): Promise<{ id: string; 
   if (error) throw new Error(`Unable to persist signal evidence: ${error.message}`);
   if (data?.id) return { id: data.id, duplicate: false };
 
-  const existing = await (supabaseAdmin as any)
+  const existing = await supabaseAdmin
     .from('signal_evidence')
     .select('id')
     .eq('fingerprint', evidence.fingerprint)
@@ -96,7 +96,7 @@ async function persistEvidence(evidence: SignalEvidence): Promise<{ id: string; 
 
 async function persistEngineRun(evidence: SignalEvidence, signalId: string | null = null) {
   const status = evidence.plan.direction === 'wait' ? 'no_trade' : 'signal_created';
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('signal_engine_runs')
     .insert({
       instrument_id: evidence.instrumentId,
@@ -123,7 +123,7 @@ async function persistEngineRun(evidence: SignalEvidence, signalId: string | nul
     .select('id')
     .single();
   if (error || !data?.id) throw new Error(`Unable to persist engine run: ${error?.message ?? 'missing id'}`);
-  return data.id as string;
+  return data.id;
 }
 
 async function createPaperOrder(
@@ -134,7 +134,7 @@ async function createPaperOrder(
 ): Promise<string | null> {
   if (!tradingAccountId || !userId) return null;
 
-  const account = await (supabaseAdmin as any)
+  const account = await supabaseAdmin
     .from('trading_accounts')
     .select('id,user_id,account_environment,execution_mode,enabled,emergency_stop,currency')
     .eq('id', tradingAccountId)
@@ -146,16 +146,16 @@ async function createPaperOrder(
   if (account.data.account_environment !== 'demo' || account.data.execution_mode !== 'paper_auto') return null;
 
   const idempotencyKey = executionIdempotencyKey(evidence);
-  const existing = await (supabaseAdmin as any)
+  const existing = await supabaseAdmin
     .from('execution_orders')
     .select('id')
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle();
-  if (existing.data?.id) return existing.data.id as string;
+  if (existing.data?.id) return existing.data.id;
 
   // requested_amount is a temporary paper placeholder only. The fail-closed
   // risk coordinator replaces it with the calculated position size before submission.
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('execution_orders')
     .insert({
       user_id: userId,
@@ -190,7 +190,7 @@ async function createPaperOrder(
     .select('id')
     .single();
   if (error || !data?.id) throw new Error(`Unable to create paper order: ${error?.message ?? 'missing id'}`);
-  return data.id as string;
+  return data.id;
 }
 
 export async function runAndPersistDerivSignal(
