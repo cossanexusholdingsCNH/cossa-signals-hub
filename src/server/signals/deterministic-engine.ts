@@ -114,6 +114,9 @@ export function buildTradePlan(candles: Candle[]): TradePlan {
   const current = closes.at(-1)!;
   const atrPct = (atr14 / current) * 100;
   const trendDistancePct = (Math.abs(ema20 - ema50) / current) * 100;
+  const recentLookback = Math.min(20, closes.length - 1);
+  const recentStart = closes[closes.length - 1 - recentLookback];
+  const recentMovePct = ((current - recentStart) / recentStart) * 100;
 
   let regime: MarketRegime = 'ranging';
   if (atrPct >= 2.5) regime = 'volatile';
@@ -133,10 +136,18 @@ export function buildTradePlan(candles: Candle[]): TradePlan {
   if (current > ema20) bullScore += 1;
   if (current < ema20) bearScore += 1;
 
-  if (rsi14 > 75) noTradeReasons.push('RSI is extremely overbought');
-  if (rsi14 < 25) noTradeReasons.push('RSI is extremely oversold');
+  // Strong persistent trends can legitimately keep RSI beyond conventional
+  // overbought/oversold levels. Only block those extremes when price has not
+  // demonstrated a meaningful recent directional move.
+  if (rsi14 > 75 && recentMovePct < 1) noTradeReasons.push('RSI is extremely overbought without sufficient recent trend confirmation');
+  if (rsi14 < 25 && recentMovePct > -1) noTradeReasons.push('RSI is extremely oversold without sufficient recent trend confirmation');
   if (atrPct > 5) noTradeReasons.push('ATR volatility exceeds safety threshold');
-  if (regime === 'ranging' && Math.abs(bullScore - bearScore) < 3) noTradeReasons.push('Ranging regime has insufficient directional edge');
+
+  // A ranging market must not become tradable from tiny indicator noise. Require
+  // both a large score separation and a minimum realised price move.
+  if (regime === 'ranging' && (Math.abs(bullScore - bearScore) < 3 || Math.abs(recentMovePct) < 0.5)) {
+    noTradeReasons.push('Ranging regime has insufficient directional edge');
+  }
 
   const edge = bullScore - bearScore;
   let direction: SignalDirection = 'wait';
