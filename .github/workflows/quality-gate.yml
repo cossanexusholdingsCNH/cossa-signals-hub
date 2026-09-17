@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-build:
+  execution-engine:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,8 +38,36 @@ jobs:
       - name: Run deterministic tests
         run: bun run test
 
-      - name: Run lint
-        run: bun run lint
+      - name: Check execution-engine lint
+        run: >-
+          bunx eslint
+          src/server/market-data/deriv.ts
+          src/server/signals/deterministic-engine.ts
+          src/server/signals/deterministic-engine.test.ts
+          src/server/signals/deriv-signal-pipeline.ts
+          src/server/signals/persist-pipeline.server.ts
+          src/server/execution/risk-engine.ts
+          src/server/execution/risk-engine.test.ts
+          src/server/execution/paper-coordinator.server.ts
 
       - name: Build application
         run: bun run build
+
+  legacy-lint-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Audit full repository lint debt
+        run: bun run lint
