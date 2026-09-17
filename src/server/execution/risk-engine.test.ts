@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { evaluateExecutionRisk, type ExecutionRiskInput } from './risk-engine';
 
 const base: ExecutionRiskInput = {
