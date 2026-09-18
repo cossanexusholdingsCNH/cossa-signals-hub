@@ -146,13 +146,17 @@ function installSocketHandlers(socket: WebSocket) {
 
   socket.onerror = () => {
     detachSocket(socket);
-    rejectPending(new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"));
+    rejectPending(
+      new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"),
+    );
   };
 
   socket.onclose = () => {
     detachSocket(socket);
     if (pendingRequests.size > 0) {
-      rejectPending(new DerivMarketDataError("Deriv WebSocket connection closed", "WS_CONNECTION_FAILED"));
+      rejectPending(
+        new DerivMarketDataError("Deriv WebSocket connection closed", "WS_CONNECTION_FAILED"),
+      );
     }
   };
 }
