@@ -144,7 +144,7 @@ export async function fetchDerivActiveSymbols(): Promise<DerivActiveSymbol[]> {
 export async function fetchDerivTick(symbol: string): Promise<DerivTick> {
   if (!symbol.trim()) throw new DerivMarketDataError("Deriv symbol is required");
 
-  return requestOnce({ ticks: symbol.trim(), subscribe: 0, req_id: 1 }, (message) => {
+  return requestOnce({ ticks: symbol.trim(), req_id: 1 }, (message) => {
     if (message.msg_type !== "tick" || !message.tick) return undefined;
     return {
       ...message.tick,
