@@ -7,7 +7,12 @@ export type Candle = {
 };
 
 export type SignalDirection = "buy" | "sell" | "wait";
-export type MarketRegime = "trending" | "ranging" | "volatile" | "unknown";
+export type MarketRegime =
+  | "trending_up"
+  | "trending_down"
+  | "ranging"
+  | "high_volatility"
+  | "unknown";
 
 export type IndicatorSnapshot = {
   rsi14: number;
@@ -125,8 +130,8 @@ export function buildTradePlan(candles: Candle[]): TradePlan {
   const recentMovePct = ((current - recentStart) / recentStart) * 100;
 
   let regime: MarketRegime = "ranging";
-  if (atrPct >= 2.5) regime = "volatile";
-  else if (trendDistancePct >= 0.18) regime = "trending";
+  if (atrPct >= 2.5) regime = "high_volatility";
+  else if (trendDistancePct >= 0.18) regime = ema20 >= ema50 ? "trending_up" : "trending_down";
 
   let bullScore = 0;
   let bearScore = 0;
@@ -160,17 +165,12 @@ export function buildTradePlan(candles: Candle[]): TradePlan {
   if (current > ema20) bullScore += 1;
   if (current < ema20) bearScore += 1;
 
-  // Strong persistent trends can legitimately keep RSI beyond conventional
-  // overbought/oversold levels. Only block those extremes when price has not
-  // demonstrated a meaningful recent directional move.
   if (rsi14 > 75 && recentMovePct < 1)
     noTradeReasons.push("RSI is extremely overbought without sufficient recent trend confirmation");
   if (rsi14 < 25 && recentMovePct > -1)
     noTradeReasons.push("RSI is extremely oversold without sufficient recent trend confirmation");
   if (atrPct > 5) noTradeReasons.push("ATR volatility exceeds safety threshold");
 
-  // A ranging market must not become tradable from tiny indicator noise. Require
-  // both a large score separation and a minimum realised price move.
   if (
     regime === "ranging" &&
     (Math.abs(bullScore - bearScore) < 3 || Math.abs(recentMovePct) < 0.5)
@@ -185,7 +185,7 @@ export function buildTradePlan(candles: Candle[]): TradePlan {
 
   const confidence = Math.min(
     95,
-    Math.max(0, 50 + Math.abs(edge) * 8 - (regime === "volatile" ? 10 : 0)),
+    Math.max(0, 50 + Math.abs(edge) * 8 - (regime === "high_volatility" ? 10 : 0)),
   );
   if (direction === "wait") {
     return {
