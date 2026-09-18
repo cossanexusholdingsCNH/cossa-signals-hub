@@ -63,10 +63,7 @@ export class DerivMarketDataError extends Error {
   }
 }
 
-const DERIV_TRANSIENT_ERROR_CODES = new Set([
-  "WS_CONNECTION_FAILED",
-  "REQUEST_TIMEOUT",
-]);
+const DERIV_TRANSIENT_ERROR_CODES = new Set(["WS_CONNECTION_FAILED", "REQUEST_TIMEOUT"]);
 const DERIV_MAX_ATTEMPTS = 3;
 const DERIV_RETRY_BASE_DELAY_MS = 250;
 
@@ -113,12 +110,7 @@ async function requestAttempt<T>(
 
     const timer = setTimeout(() => {
       finish(() =>
-        reject(
-          new DerivMarketDataError(
-            "Deriv market-data request timed out",
-            "REQUEST_TIMEOUT",
-          ),
-        ),
+        reject(new DerivMarketDataError("Deriv market-data request timed out", "REQUEST_TIMEOUT")),
       );
     }, timeoutMs);
 
@@ -179,9 +171,7 @@ async function requestOnce<T>(
       return await requestAttempt(payload, select, timeoutMs);
     } catch (error) {
       lastError = error;
-      if (!isTransientDerivError(error) || attempt === DERIV_MAX_ATTEMPTS) {
-        throw error;
-      }
+      if (!isTransientDerivError(error) || attempt === DERIV_MAX_ATTEMPTS) throw error;
 
       const exponentialDelay = DERIV_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
       const jitter = Math.floor(Math.random() * DERIV_RETRY_BASE_DELAY_MS);
@@ -201,9 +191,7 @@ export async function fetchDerivActiveSymbols(): Promise<DerivActiveSymbol[]> {
 }
 
 export async function fetchDerivTick(symbol: string): Promise<DerivTick> {
-  if (!symbol.trim()) {
-    throw new DerivMarketDataError("Deriv symbol is required");
-  }
+  if (!symbol.trim()) throw new DerivMarketDataError("Deriv symbol is required");
 
   return requestOnce({ ticks: symbol.trim(), req_id: 1 }, (message) => {
     if (message.msg_type !== "tick" || !message.tick) return undefined;
@@ -212,14 +200,8 @@ export async function fetchDerivTick(symbol: string): Promise<DerivTick> {
       symbol: String(message.tick.symbol || symbol),
       epoch: finiteNumber(message.tick.epoch, "tick epoch"),
       quote: finiteNumber(message.tick.quote, "tick quote"),
-      bid:
-        message.tick.bid === undefined
-          ? undefined
-          : finiteNumber(message.tick.bid, "tick bid"),
-      ask:
-        message.tick.ask === undefined
-          ? undefined
-          : finiteNumber(message.tick.ask, "tick ask"),
+      bid: message.tick.bid === undefined ? undefined : finiteNumber(message.tick.bid, "tick bid"),
+      ask: message.tick.ask === undefined ? undefined : finiteNumber(message.tick.ask, "tick ask"),
     };
   });
 }
@@ -229,9 +211,7 @@ export async function fetchDerivCandles(
   granularitySeconds: 60 | 300 | 900 | 1800 | 3600 | 14400 | 86400,
   count = 500,
 ): Promise<DerivCandle[]> {
-  if (!symbol.trim()) {
-    throw new DerivMarketDataError("Deriv symbol is required");
-  }
+  if (!symbol.trim()) throw new DerivMarketDataError("Deriv symbol is required");
   const safeCount = Math.max(1, Math.min(Math.trunc(count), 5_000));
 
   return requestOnce(
@@ -263,10 +243,8 @@ export function normalizeDerivSymbol(symbol: DerivActiveSymbol) {
 
   return {
     providerSymbol,
-    displayName:
-      symbol.underlying_symbol_name || symbol.display_name || providerSymbol,
-    symbolType:
-      symbol.underlying_symbol_type || symbol.symbol_type || "unknown",
+    displayName: symbol.underlying_symbol_name || symbol.display_name || providerSymbol,
+    symbolType: symbol.underlying_symbol_type || symbol.symbol_type || "unknown",
     market: symbol.market || "unknown",
     subgroup: symbol.subgroup || null,
     submarket: symbol.submarket || null,
