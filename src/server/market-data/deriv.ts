@@ -3,8 +3,7 @@
 // The public WebSocket endpoint does not require authentication.
 
 export const DERIV_PUBLIC_WS_URL =
-  process.env.DERIV_PUBLIC_WS_URL?.trim() ||
-  'wss://api.derivws.com/trading/v1/options/ws/public';
+  process.env.DERIV_PUBLIC_WS_URL?.trim() || "wss://api.derivws.com/trading/v1/options/ws/public";
 
 export type DerivActiveSymbol = {
   underlying_symbol?: string;
@@ -58,13 +57,13 @@ export class DerivMarketDataError extends Error {
 
   constructor(message: string, code?: string) {
     super(message);
-    this.name = 'DerivMarketDataError';
+    this.name = "DerivMarketDataError";
     this.code = code;
   }
 }
 
 function finiteNumber(value: unknown, label: string): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
+  const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) {
     throw new DerivMarketDataError(`Deriv returned invalid ${label}`);
   }
@@ -93,7 +92,7 @@ async function requestOnce<T>(
     };
 
     const timer = setTimeout(() => {
-      finish(() => reject(new DerivMarketDataError('Deriv market-data request timed out')));
+      finish(() => reject(new DerivMarketDataError("Deriv market-data request timed out")));
     }, timeoutMs);
 
     socket.onopen = () => {
@@ -101,7 +100,7 @@ async function requestOnce<T>(
     };
 
     socket.onerror = () => {
-      finish(() => reject(new DerivMarketDataError('Deriv WebSocket connection failed')));
+      finish(() => reject(new DerivMarketDataError("Deriv WebSocket connection failed")));
     };
 
     socket.onmessage = (event) => {
@@ -111,7 +110,7 @@ async function requestOnce<T>(
           finish(() =>
             reject(
               new DerivMarketDataError(
-                message.error?.message || 'Deriv market-data request failed',
+                message.error?.message || "Deriv market-data request failed",
                 message.error?.code,
               ),
             ),
@@ -126,7 +125,7 @@ async function requestOnce<T>(
           reject(
             error instanceof Error
               ? error
-              : new DerivMarketDataError('Unable to parse Deriv response'),
+              : new DerivMarketDataError("Unable to parse Deriv response"),
           ),
         );
       }
@@ -135,34 +134,27 @@ async function requestOnce<T>(
 }
 
 export async function fetchDerivActiveSymbols(): Promise<DerivActiveSymbol[]> {
-  return requestOnce(
-    { active_symbols: 'brief', req_id: 1 },
-    (message) =>
-      message.msg_type === 'active_symbols' && Array.isArray(message.active_symbols)
-        ? message.active_symbols
-        : undefined,
+  return requestOnce({ active_symbols: "brief", req_id: 1 }, (message) =>
+    message.msg_type === "active_symbols" && Array.isArray(message.active_symbols)
+      ? message.active_symbols
+      : undefined,
   );
 }
 
 export async function fetchDerivTick(symbol: string): Promise<DerivTick> {
-  if (!symbol.trim()) throw new DerivMarketDataError('Deriv symbol is required');
+  if (!symbol.trim()) throw new DerivMarketDataError("Deriv symbol is required");
 
-  return requestOnce(
-    { ticks: symbol.trim(), subscribe: 0, req_id: 1 },
-    (message) => {
-      if (message.msg_type !== 'tick' || !message.tick) return undefined;
-      return {
-        ...message.tick,
-        symbol: String(message.tick.symbol || symbol),
-        epoch: finiteNumber(message.tick.epoch, 'tick epoch'),
-        quote: finiteNumber(message.tick.quote, 'tick quote'),
-        bid:
-          message.tick.bid === undefined ? undefined : finiteNumber(message.tick.bid, 'tick bid'),
-        ask:
-          message.tick.ask === undefined ? undefined : finiteNumber(message.tick.ask, 'tick ask'),
-      };
-    },
-  );
+  return requestOnce({ ticks: symbol.trim(), subscribe: 0, req_id: 1 }, (message) => {
+    if (message.msg_type !== "tick" || !message.tick) return undefined;
+    return {
+      ...message.tick,
+      symbol: String(message.tick.symbol || symbol),
+      epoch: finiteNumber(message.tick.epoch, "tick epoch"),
+      quote: finiteNumber(message.tick.quote, "tick quote"),
+      bid: message.tick.bid === undefined ? undefined : finiteNumber(message.tick.bid, "tick bid"),
+      ask: message.tick.ask === undefined ? undefined : finiteNumber(message.tick.ask, "tick ask"),
+    };
+  });
 }
 
 export async function fetchDerivCandles(
@@ -170,26 +162,26 @@ export async function fetchDerivCandles(
   granularitySeconds: 60 | 300 | 900 | 1800 | 3600 | 14400 | 86400,
   count = 500,
 ): Promise<DerivCandle[]> {
-  if (!symbol.trim()) throw new DerivMarketDataError('Deriv symbol is required');
+  if (!symbol.trim()) throw new DerivMarketDataError("Deriv symbol is required");
   const safeCount = Math.max(1, Math.min(Math.trunc(count), 5_000));
 
   return requestOnce(
     {
       ticks_history: symbol.trim(),
-      end: 'latest',
+      end: "latest",
       count: safeCount,
-      style: 'candles',
+      style: "candles",
       granularity: granularitySeconds,
       req_id: 1,
     },
     (message) => {
       if (!Array.isArray(message.candles)) return undefined;
       return message.candles.map((candle) => ({
-        epoch: finiteNumber(candle.epoch, 'candle epoch'),
-        open: finiteNumber(candle.open, 'candle open'),
-        high: finiteNumber(candle.high, 'candle high'),
-        low: finiteNumber(candle.low, 'candle low'),
-        close: finiteNumber(candle.close, 'candle close'),
+        epoch: finiteNumber(candle.epoch, "candle epoch"),
+        open: finiteNumber(candle.open, "candle open"),
+        high: finiteNumber(candle.high, "candle high"),
+        low: finiteNumber(candle.low, "candle low"),
+        close: finiteNumber(candle.close, "candle close"),
       }));
     },
     15_000,
@@ -202,10 +194,9 @@ export function normalizeDerivSymbol(symbol: DerivActiveSymbol) {
 
   return {
     providerSymbol,
-    displayName:
-      symbol.underlying_symbol_name || symbol.display_name || providerSymbol,
-    symbolType: symbol.underlying_symbol_type || symbol.symbol_type || 'unknown',
-    market: symbol.market || 'unknown',
+    displayName: symbol.underlying_symbol_name || symbol.display_name || providerSymbol,
+    symbolType: symbol.underlying_symbol_type || symbol.symbol_type || "unknown",
+    market: symbol.market || "unknown",
     subgroup: symbol.subgroup || null,
     submarket: symbol.submarket || null,
     pipSize: symbol.pip_size ?? symbol.pip ?? null,

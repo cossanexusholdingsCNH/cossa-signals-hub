@@ -48,19 +48,21 @@ export type ExecutionRiskDecision = {
 const finitePositive = (value: number) => Number.isFinite(value) && value > 0;
 
 function floorToStep(value: number, step: number) {
-  const precision = Math.max(0, (String(step).split('.')[1] ?? '').length);
+  const precision = Math.max(0, (String(step).split(".")[1] ?? "").length);
   const floored = Math.floor((value + Number.EPSILON) / step) * step;
   return Number(floored.toFixed(precision));
 }
 
 export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskDecision {
-  if (!finitePositive(input.equity)) throw new Error('Account equity must be positive');
-  if (!finitePositive(input.balance)) throw new Error('Account balance must be positive');
-  if (!finitePositive(input.startOfDayEquity)) throw new Error('Start-of-day equity must be positive');
-  if (!finitePositive(input.entry) || !finitePositive(input.stopLoss)) throw new Error('Entry and stop loss must be positive');
+  if (!finitePositive(input.equity)) throw new Error("Account equity must be positive");
+  if (!finitePositive(input.balance)) throw new Error("Account balance must be positive");
+  if (!finitePositive(input.startOfDayEquity))
+    throw new Error("Start-of-day equity must be positive");
+  if (!finitePositive(input.entry) || !finitePositive(input.stopLoss))
+    throw new Error("Entry and stop loss must be positive");
 
   const stopDistance = Math.abs(input.entry - input.stopLoss);
-  if (!finitePositive(stopDistance)) throw new Error('Stop distance must be positive');
+  if (!finitePositive(stopDistance)) throw new Error("Stop distance must be positive");
 
   const requestedRiskPct = Math.max(0, input.riskPct);
   const riskPct = Math.min(requestedRiskPct, input.maxRiskPerTradePct);
@@ -70,8 +72,8 @@ export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskD
   const valuePerPriceUnit = input.valuePerPriceUnit ?? 1;
   const step = input.positionStep ?? 0.01;
 
-  if (!finitePositive(valuePerPriceUnit)) throw new Error('valuePerPriceUnit must be positive');
-  if (!finitePositive(step)) throw new Error('positionStep must be positive');
+  if (!finitePositive(valuePerPriceUnit)) throw new Error("valuePerPriceUnit must be positive");
+  if (!finitePositive(step)) throw new Error("positionStep must be positive");
 
   const rawPositionSize = riskAmount / (stopDistance * valuePerPriceUnit);
   let positionSize = floorToStep(rawPositionSize, step);
@@ -86,7 +88,8 @@ export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskD
     openPositionGateClear: input.openPositions < input.maxOpenPositions,
     perTradeRiskGateClear: requestedRiskPct > 0 && requestedRiskPct <= input.maxRiskPerTradePct,
     signalQualityGateClear: input.confidence >= input.minimumConfidence,
-    staleDataGateClear: input.marketDataAgeMs >= 0 && input.marketDataAgeMs <= input.maximumMarketDataAgeMs,
+    staleDataGateClear:
+      input.marketDataAgeMs >= 0 && input.marketDataAgeMs <= input.maximumMarketDataAgeMs,
     duplicateOrderGateClear: !input.duplicateOrder,
     positionSizeGateClear:
       finitePositive(positionSize) &&
@@ -94,15 +97,18 @@ export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskD
   };
 
   const rejectionReasons: string[] = [];
-  if (!gates.accountEnabled) rejectionReasons.push('Trading account is disabled');
-  if (!gates.emergencyStopClear) rejectionReasons.push('Emergency stop is active');
-  if (!gates.dailyLossGateClear) rejectionReasons.push('Maximum daily loss threshold reached');
-  if (!gates.openPositionGateClear) rejectionReasons.push('Maximum open positions reached');
-  if (!gates.perTradeRiskGateClear) rejectionReasons.push('Requested risk exceeds account per-trade limit');
-  if (!gates.signalQualityGateClear) rejectionReasons.push('Signal confidence is below execution threshold');
-  if (!gates.staleDataGateClear) rejectionReasons.push('Market data is stale');
-  if (!gates.duplicateOrderGateClear) rejectionReasons.push('Duplicate execution intent detected');
-  if (!gates.positionSizeGateClear) rejectionReasons.push('Calculated position size is not executable');
+  if (!gates.accountEnabled) rejectionReasons.push("Trading account is disabled");
+  if (!gates.emergencyStopClear) rejectionReasons.push("Emergency stop is active");
+  if (!gates.dailyLossGateClear) rejectionReasons.push("Maximum daily loss threshold reached");
+  if (!gates.openPositionGateClear) rejectionReasons.push("Maximum open positions reached");
+  if (!gates.perTradeRiskGateClear)
+    rejectionReasons.push("Requested risk exceeds account per-trade limit");
+  if (!gates.signalQualityGateClear)
+    rejectionReasons.push("Signal confidence is below execution threshold");
+  if (!gates.staleDataGateClear) rejectionReasons.push("Market data is stale");
+  if (!gates.duplicateOrderGateClear) rejectionReasons.push("Duplicate execution intent detected");
+  if (!gates.positionSizeGateClear)
+    rejectionReasons.push("Calculated position size is not executable");
 
   return {
     approved: Object.values(gates).every(Boolean),

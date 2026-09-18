@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
-import { buildTradePlan, type Candle } from './deterministic-engine';
+import { describe, expect, it } from "bun:test";
+import { buildTradePlan, type Candle } from "./deterministic-engine";
 
 function candlesFromCloses(closes: number[]): Candle[] {
   return closes.map((close, index) => {
@@ -10,17 +10,17 @@ function candlesFromCloses(closes: number[]): Candle[] {
   });
 }
 
-describe('buildTradePlan', () => {
-  it('rejects insufficient evidence', () => {
-    expect(() => buildTradePlan(candlesFromCloses(Array.from({ length: 59 }, (_, i) => 100 + i * 0.1)))).toThrow(
-      'At least 60 closed candles are required',
-    );
+describe("buildTradePlan", () => {
+  it("rejects insufficient evidence", () => {
+    expect(() =>
+      buildTradePlan(candlesFromCloses(Array.from({ length: 59 }, (_, i) => 100 + i * 0.1))),
+    ).toThrow("At least 60 closed candles are required");
   });
 
-  it('creates a complete bullish plan when deterministic evidence is strong', () => {
+  it("creates a complete bullish plan when deterministic evidence is strong", () => {
     const closes = Array.from({ length: 100 }, (_, i) => 100 + i * 0.35);
     const plan = buildTradePlan(candlesFromCloses(closes));
-    expect(plan.direction).toBe('buy');
+    expect(plan.direction).toBe("buy");
     expect(plan.entry).not.toBeNull();
     expect(plan.stopLoss).toBeLessThan(plan.entry!);
     expect(plan.takeProfit1).toBeGreaterThan(plan.entry!);
@@ -29,10 +29,10 @@ describe('buildTradePlan', () => {
     expect(plan.riskRewardRatio).toBe(3);
   });
 
-  it('creates a complete bearish plan when deterministic evidence is strong', () => {
+  it("creates a complete bearish plan when deterministic evidence is strong", () => {
     const closes = Array.from({ length: 100 }, (_, i) => 150 - i * 0.3);
     const plan = buildTradePlan(candlesFromCloses(closes));
-    expect(plan.direction).toBe('sell');
+    expect(plan.direction).toBe("sell");
     expect(plan.entry).not.toBeNull();
     expect(plan.stopLoss).toBeGreaterThan(plan.entry!);
     expect(plan.takeProfit1).toBeLessThan(plan.entry!);
@@ -40,10 +40,10 @@ describe('buildTradePlan', () => {
     expect(plan.takeProfit3).toBeLessThan(plan.takeProfit2!);
   });
 
-  it('does not manufacture a trade from flat/no-edge candles', () => {
+  it("does not manufacture a trade from flat/no-edge candles", () => {
     const closes = Array.from({ length: 100 }, (_, i) => 100 + Math.sin(i / 3) * 0.05);
     const plan = buildTradePlan(candlesFromCloses(closes));
-    expect(plan.direction).toBe('wait');
+    expect(plan.direction).toBe("wait");
     expect(plan.entry).toBeNull();
     expect(plan.stopLoss).toBeNull();
   });

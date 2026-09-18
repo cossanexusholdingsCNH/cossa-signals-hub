@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
-import { fetchDerivCandles, type DerivCandle } from '../market-data/deriv';
-import { buildTradePlan, type Candle, type TradePlan } from './deterministic-engine';
+import { createHash } from "node:crypto";
+import { fetchDerivCandles, type DerivCandle } from "../market-data/deriv";
+import { buildTradePlan, type Candle, type TradePlan } from "./deterministic-engine";
 
-export type SupportedTimeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+export type SupportedTimeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
 
 export type SignalPipelineInput = {
   instrumentId: string;
@@ -27,7 +27,7 @@ export type NormalizedMarketCandle = Candle & {
 
 export type SignalEvidence = {
   fingerprint: string;
-  engineVersion: 'deterministic-v1';
+  engineVersion: "deterministic-v1";
   generatedAt: string;
   instrumentId: string;
   providerId: string;
@@ -41,10 +41,10 @@ export type SignalEvidence = {
 
 export type PaperExecutionCandidate = {
   fingerprint: string;
-  mode: 'paper';
+  mode: "paper";
   providerSymbol: string;
   timeframe: SupportedTimeframe;
-  direction: 'buy' | 'sell';
+  direction: "buy" | "sell";
   confidence: number;
   entry: number;
   stopLoss: number;
@@ -55,15 +55,16 @@ export type PaperExecutionCandidate = {
   createdAt: string;
 };
 
-const TIMEFRAME_SECONDS: Record<SupportedTimeframe, 60 | 300 | 900 | 1800 | 3600 | 14400 | 86400> = {
-  '1m': 60,
-  '5m': 300,
-  '15m': 900,
-  '30m': 1800,
-  '1h': 3600,
-  '4h': 14400,
-  '1d': 86400,
-};
+const TIMEFRAME_SECONDS: Record<SupportedTimeframe, 60 | 300 | 900 | 1800 | 3600 | 14400 | 86400> =
+  {
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400,
+  };
 
 function assertIdentifier(value: string, label: string) {
   if (!value.trim()) throw new Error(`${label} is required`);
@@ -79,7 +80,8 @@ function normalizeClosedCandles(
   const byEpoch = new Map<number, DerivCandle>();
 
   for (const candle of raw) {
-    if (![candle.epoch, candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) continue;
+    if (![candle.epoch, candle.open, candle.high, candle.low, candle.close].every(Number.isFinite))
+      continue;
     if (candle.open <= 0 || candle.high <= 0 || candle.low <= 0 || candle.close <= 0) continue;
     if (candle.high < Math.max(candle.open, candle.close, candle.low)) continue;
     if (candle.low > Math.min(candle.open, candle.close, candle.high)) continue;
@@ -107,17 +109,19 @@ function normalizeClosedCandles(
 
 function fingerprint(input: SignalPipelineInput, candles: NormalizedMarketCandle[]) {
   const latest = candles.at(-1)!;
-  return createHash('sha256')
-    .update([
-      'deterministic-v1',
-      input.instrumentId,
-      input.providerId,
-      input.providerSymbol.trim(),
-      input.timeframe,
-      latest.sourceEpoch,
-      latest.close,
-    ].join('|'))
-    .digest('hex');
+  return createHash("sha256")
+    .update(
+      [
+        "deterministic-v1",
+        input.instrumentId,
+        input.providerId,
+        input.providerSymbol.trim(),
+        input.timeframe,
+        latest.sourceEpoch,
+        latest.close,
+      ].join("|"),
+    )
+    .digest("hex");
 }
 
 export async function runDerivSignalPipeline(input: SignalPipelineInput): Promise<{
@@ -125,9 +129,9 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
   evidence: SignalEvidence;
   paperCandidate: PaperExecutionCandidate | null;
 }> {
-  assertIdentifier(input.instrumentId, 'instrumentId');
-  assertIdentifier(input.providerId, 'providerId');
-  assertIdentifier(input.providerSymbol, 'providerSymbol');
+  assertIdentifier(input.instrumentId, "instrumentId");
+  assertIdentifier(input.providerId, "providerId");
+  assertIdentifier(input.providerSymbol, "providerSymbol");
 
   const now = input.now ?? new Date();
   const minimumCandles = Math.max(60, input.minimumCandles ?? 100);
@@ -135,16 +139,22 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
   const maximumCandleAgeMs = input.maximumCandleAgeMs ?? granularitySeconds * 2 * 1000;
 
   // Fetch extra rows because the latest provider candle may still be open and is rejected below.
-  const raw = await fetchDerivCandles(input.providerSymbol, granularitySeconds, Math.max(minimumCandles + 10, 120));
+  const raw = await fetchDerivCandles(
+    input.providerSymbol,
+    granularitySeconds,
+    Math.max(minimumCandles + 10, 120),
+  );
   const candles = normalizeClosedCandles(raw, input, now);
 
   if (candles.length < minimumCandles) {
-    throw new Error(`Insufficient closed candles: required ${minimumCandles}, received ${candles.length}`);
+    throw new Error(
+      `Insufficient closed candles: required ${minimumCandles}, received ${candles.length}`,
+    );
   }
 
   const latest = candles.at(-1)!;
   const ageMs = now.getTime() - latest.closeTime.getTime();
-  if (ageMs < 0) throw new Error('Latest candle close time is in the future');
+  if (ageMs < 0) throw new Error("Latest candle close time is in the future");
   if (ageMs > maximumCandleAgeMs) {
     throw new Error(`Stale market data: latest closed candle is ${ageMs}ms old`);
   }
@@ -154,7 +164,7 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
   const fp = fingerprint(input, analysisWindow);
   const evidence: SignalEvidence = {
     fingerprint: fp,
-    engineVersion: 'deterministic-v1',
+    engineVersion: "deterministic-v1",
     generatedAt: now.toISOString(),
     instrumentId: input.instrumentId,
     providerId: input.providerId,
@@ -167,7 +177,7 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
   };
 
   const executable =
-    (plan.direction === 'buy' || plan.direction === 'sell') &&
+    (plan.direction === "buy" || plan.direction === "sell") &&
     plan.entry !== null &&
     plan.stopLoss !== null &&
     plan.takeProfit1 !== null &&
@@ -178,10 +188,10 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
   const paperCandidate: PaperExecutionCandidate | null = executable
     ? {
         fingerprint: fp,
-        mode: 'paper',
+        mode: "paper",
         providerSymbol: input.providerSymbol.trim(),
         timeframe: input.timeframe,
-        direction: plan.direction as 'buy' | 'sell',
+        direction: plan.direction as "buy" | "sell",
         confidence: plan.confidence,
         entry: plan.entry!,
         stopLoss: plan.stopLoss!,
