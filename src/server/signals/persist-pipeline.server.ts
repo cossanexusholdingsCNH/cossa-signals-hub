@@ -43,12 +43,10 @@ async function persistCandles(
     metadata: { source_epoch: c.sourceEpoch },
   }));
 
-  const { error } = await supabaseAdmin
-    .from("market_candles")
-    .upsert(rows, {
-      onConflict: "instrument_id,provider_id,timeframe,open_time",
-      ignoreDuplicates: true,
-    });
+  const { error } = await supabaseAdmin.from("market_candles").upsert(rows, {
+    onConflict: "instrument_id,provider_id,timeframe,open_time",
+    ignoreDuplicates: true,
+  });
   if (error) throw new Error(`Unable to persist market candles: ${error.message}`);
 }
 
