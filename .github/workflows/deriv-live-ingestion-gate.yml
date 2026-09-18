@@ -1,0 +1,31 @@
+name: Deriv Live Ingestion Gate
+
+on:
+  pull_request:
+    paths:
+      - "src/server/market-data/**"
+      - "src/routes/api.deriv-ingest.ts"
+      - "vercel.json"
+      - ".github/workflows/deriv-live-ingestion-gate.yml"
+  push:
+    branches:
+      - upgrade/deriv-live-ingestion
+    paths:
+      - "src/server/market-data/**"
+      - "src/routes/api.deriv-ingest.ts"
+      - "vercel.json"
+      - ".github/workflows/deriv-live-ingestion-gate.yml"
+
+jobs:
+  deriv-live-ingestion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun install --frozen-lockfile
+      - run: bun test src/server/market-data/deriv-live-ingestion.test.ts src/server/execution/risk-engine.test.ts src/server/signals/deterministic-engine.test.ts
+      - run: bunx prettier --check src/server/market-data/deriv-live-ingestion.server.ts src/server/market-data/deriv-live-ingestion.test.ts src/routes/api.deriv-ingest.ts vercel.json
+      - run: bunx eslint src/server/market-data/deriv-live-ingestion.server.ts src/server/market-data/deriv-live-ingestion.test.ts src/routes/api.deriv-ingest.ts
+      - run: bun run build
