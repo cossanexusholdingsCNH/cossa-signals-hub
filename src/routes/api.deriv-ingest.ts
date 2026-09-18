@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/deriv-ingest")({
 
         try {
           const result = await runDerivLiveIngestion({
-            providerSymbol: "1HZ100V",
+            providerSymbol: "1HZ75V",
             timeframe: "5m",
           });
           return Response.json(result, {
