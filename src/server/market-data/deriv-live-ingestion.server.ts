@@ -14,6 +14,22 @@ type RuntimeMapping = {
   providerSymbol: string;
 };
 
+type EnabledDerivMapping = {
+  providerSymbol: string;
+  timeframe: SupportedTimeframe;
+};
+
+const DEFAULT_DERIV_INGESTION_CONCURRENCY = 3;
+const MAX_DERIV_INGESTION_CONCURRENCY = 6;
+
+function derivIngestionConcurrency() {
+  const configured = Number.parseInt(process.env.DERIV_INGESTION_CONCURRENCY ?? "", 10);
+  if (!Number.isFinite(configured) || configured < 1) {
+    return DEFAULT_DERIV_INGESTION_CONCURRENCY;
+  }
+  return Math.min(configured, MAX_DERIV_INGESTION_CONCURRENCY);
+}
+
 async function resolveDerivProvider() {
   const provider = await supabaseAdmin
     .from("market_data_providers")
@@ -220,6 +236,40 @@ export async function runDerivLiveIngestion(input: DerivLiveIngestionInput) {
   }
 }
 
+async function ingestEnabledMapping(mapping: EnabledDerivMapping) {
+  try {
+    return await runDerivLiveIngestion({
+      providerSymbol: mapping.providerSymbol,
+      timeframe: mapping.timeframe,
+    });
+  } catch (error) {
+    return {
+      ok: false as const,
+      provider: "deriv",
+      providerSymbol: mapping.providerSymbol,
+      error: error instanceof Error ? error.message : "Unknown Deriv ingestion failure",
+    };
+  }
+}
+
+async function runWithBoundedConcurrency(mappings: EnabledDerivMapping[], concurrency: number) {
+  const results: Awaited<ReturnType<typeof ingestEnabledMapping>>[] = new Array(mappings.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= mappings.length) return;
+      results[index] = await ingestEnabledMapping(mappings[index]);
+    }
+  }
+
+  const workerCount = Math.min(concurrency, mappings.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 export async function runEnabledDerivIngestion() {
   const provider = await resolveDerivProvider();
   const { data: mappings, error } = await supabaseAdmin
@@ -234,34 +284,33 @@ export async function runEnabledDerivIngestion() {
     throw new Error("No enabled Deriv instrument mappings are configured");
   }
 
-  const results = [];
+  const enabledMappings: EnabledDerivMapping[] = [];
   for (const mapping of mappings) {
     const instrument = Array.isArray(mapping.instruments)
       ? mapping.instruments[0]
       : mapping.instruments;
     if (!instrument?.enabled) continue;
-    const timeframe = (instrument.timeframe_default || "5m") as SupportedTimeframe;
-    try {
-      results.push(
-        await runDerivLiveIngestion({ providerSymbol: mapping.provider_symbol, timeframe }),
-      );
-    } catch (error) {
-      results.push({
-        ok: false as const,
-        provider: "deriv",
-        providerSymbol: mapping.provider_symbol,
-        error: error instanceof Error ? error.message : "Unknown Deriv ingestion failure",
-      });
-    }
+    enabledMappings.push({
+      providerSymbol: mapping.provider_symbol,
+      timeframe: (instrument.timeframe_default || "5m") as SupportedTimeframe,
+    });
   }
 
+  if (!enabledMappings.length) {
+    throw new Error("No enabled Deriv instruments are configured");
+  }
+
+  const concurrency = derivIngestionConcurrency();
+  const results = await runWithBoundedConcurrency(enabledMappings, concurrency);
   const succeeded = results.filter((result) => result.ok).length;
+
   return {
     ok: succeeded > 0,
     provider: "deriv",
     attempted: results.length,
     succeeded,
     failed: results.length - succeeded,
+    concurrency,
     results,
   };
 }
