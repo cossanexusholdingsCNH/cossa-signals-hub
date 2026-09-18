@@ -10,6 +10,10 @@ export type DerivSyntheticCandidate = NormalizedDerivSymbol & {
   riskRating: "moderate" | "high" | "extreme";
 };
 
+export type DerivRegistryImportInput = {
+  providerSymbols?: string[];
+};
+
 function canonicalSymbol(providerSymbol: string) {
   return `DERIV_${providerSymbol.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
 }
@@ -64,7 +68,7 @@ export function discoverDerivSyntheticCandidates(activeSymbols: DerivActiveSymbo
   return candidates.sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-export async function reconcileDerivSyntheticRegistry() {
+async function resolveDerivProvider() {
   const provider = await supabaseAdmin
     .from("market_data_providers")
     .select("id,enabled")
@@ -72,31 +76,41 @@ export async function reconcileDerivSyntheticRegistry() {
     .single();
   if (provider.error || !provider.data) throw new Error(`Deriv provider is not configured: ${provider.error?.message ?? "missing row"}`);
   if (!provider.data.enabled) throw new Error("Deriv provider is disabled");
+  return provider.data;
+}
 
-  const activeSymbols = await fetchDerivActiveSymbols();
-  const candidates = discoverDerivSyntheticCandidates(activeSymbols);
-
-  const existingMappings = await supabaseAdmin
+async function loadExistingRegistry(providerId: string) {
+  const mappings = await supabaseAdmin
     .from("instrument_provider_mappings")
     .select("id,instrument_id,provider_symbol,enabled,is_primary")
-    .eq("provider_id", provider.data.id);
-  if (existingMappings.error) throw new Error(`Unable to load Deriv mappings: ${existingMappings.error.message}`);
+    .eq("provider_id", providerId);
+  if (mappings.error) throw new Error(`Unable to load Deriv mappings: ${mappings.error.message}`);
 
-  const existingByProviderSymbol = new Map((existingMappings.data ?? []).map((row) => [row.provider_symbol, row]));
-  const existingInstrumentIds = [...new Set((existingMappings.data ?? []).map((row) => row.instrument_id))];
-  const existingInstruments = existingInstrumentIds.length
-    ? await supabaseAdmin.from("instruments").select("id,symbol,display_name").in("id", existingInstrumentIds)
+  const instrumentIds = [...new Set((mappings.data ?? []).map((row) => row.instrument_id))];
+  const instruments = instrumentIds.length
+    ? await supabaseAdmin.from("instruments").select("id,symbol,display_name").in("id", instrumentIds)
     : { data: [], error: null };
-  if (existingInstruments.error) throw new Error(`Unable to load existing Deriv instruments: ${existingInstruments.error.message}`);
+  if (instruments.error) throw new Error(`Unable to load existing Deriv instruments: ${instruments.error.message}`);
 
-  const instrumentById = new Map((existingInstruments.data ?? []).map((row) => [row.id, row]));
+  return {
+    mappings: mappings.data ?? [],
+    instrumentById: new Map((instruments.data ?? []).map((row) => [row.id, row])),
+  };
+}
+
+export async function reconcileDerivSyntheticRegistry() {
+  const provider = await resolveDerivProvider();
+  const activeSymbols = await fetchDerivActiveSymbols();
+  const candidates = discoverDerivSyntheticCandidates(activeSymbols);
+  const registry = await loadExistingRegistry(provider.id);
+  const existingByProviderSymbol = new Map(registry.mappings.map((row) => [row.provider_symbol, row]));
   const discovered = [] as Array<Record<string, unknown>>;
   const alreadyRegistered = [] as Array<Record<string, unknown>>;
 
   for (const candidate of candidates) {
     const mapping = existingByProviderSymbol.get(candidate.providerSymbol);
     if (mapping) {
-      const instrument = instrumentById.get(mapping.instrument_id);
+      const instrument = registry.instrumentById.get(mapping.instrument_id);
       alreadyRegistered.push({
         providerSymbol: candidate.providerSymbol,
         cossaSymbol: instrument?.symbol ?? candidate.cossaSymbol,
@@ -119,7 +133,6 @@ export async function reconcileDerivSyntheticRegistry() {
       submarket: candidate.submarket,
       pipSize: candidate.pipSize,
       exchangeOpen: candidate.exchangeOpen,
-      // Discovery is intentionally non-destructive: new symbols are not inserted or enabled here.
       proposedEnabled: false,
     });
   }
@@ -133,5 +146,104 @@ export async function reconcileDerivSyntheticRegistry() {
     discoveredCount: discovered.length,
     alreadyRegistered,
     discovered,
+  };
+}
+
+export async function importDiscoveredDerivSyntheticRegistry(input: DerivRegistryImportInput = {}) {
+  const provider = await resolveDerivProvider();
+  const candidates = discoverDerivSyntheticCandidates(await fetchDerivActiveSymbols());
+  const requested = new Set((input.providerSymbols ?? []).map((value) => value.trim()).filter(Boolean));
+  const selected = requested.size ? candidates.filter((candidate) => requested.has(candidate.providerSymbol)) : candidates;
+  const known = new Set(candidates.map((candidate) => candidate.providerSymbol));
+  const unknownRequested = [...requested].filter((providerSymbol) => !known.has(providerSymbol));
+  if (unknownRequested.length) throw new Error(`Unknown or inactive Deriv symbols requested: ${unknownRequested.join(", ")}`);
+
+  const registry = await loadExistingRegistry(provider.id);
+  const existingByProviderSymbol = new Map(registry.mappings.map((row) => [row.provider_symbol, row]));
+  const imported: Array<Record<string, unknown>> = [];
+  const skipped: Array<Record<string, unknown>> = [];
+
+  for (const candidate of selected) {
+    const existing = existingByProviderSymbol.get(candidate.providerSymbol);
+    if (existing) {
+      skipped.push({ providerSymbol: candidate.providerSymbol, reason: "already_registered" });
+      continue;
+    }
+
+    const existingInstrument = await supabaseAdmin
+      .from("instruments")
+      .select("id,symbol")
+      .eq("symbol", candidate.cossaSymbol)
+      .maybeSingle();
+    if (existingInstrument.error) throw new Error(`Unable to check ${candidate.cossaSymbol}: ${existingInstrument.error.message}`);
+
+    let instrumentId = existingInstrument.data?.id;
+    if (!instrumentId) {
+      const instrument = await supabaseAdmin
+        .from("instruments")
+        .insert({
+          symbol: candidate.cossaSymbol,
+          display_name: candidate.displayName,
+          asset_class: "synthetic_index",
+          category: candidate.category,
+          provider: "deriv",
+          timeframe_default: candidate.timeframeDefault,
+          market_status: candidate.exchangeOpen ? "open" : "unknown",
+          enabled: false,
+          validation_status: "experimental",
+          minimum_sample_required: 30,
+          description: `${candidate.displayName} discovered from Deriv active symbols. Pending Cossa validation.`,
+          market_characteristics: `Deriv synthetic index; provider symbol ${candidate.providerSymbol}`,
+          risk_rating: candidate.riskRating,
+          data_source: "deriv",
+          is_demo: false,
+        })
+        .select("id")
+        .single();
+      if (instrument.error || !instrument.data?.id) throw new Error(`Unable to import ${candidate.providerSymbol}: ${instrument.error?.message ?? "missing instrument id"}`);
+      instrumentId = instrument.data.id;
+    }
+
+    const mapping = await supabaseAdmin.from("instrument_provider_mappings").insert({
+      instrument_id: instrumentId,
+      provider_id: provider.id,
+      provider_symbol: candidate.providerSymbol,
+      enabled: false,
+      is_primary: false,
+      metadata: {
+        registry: "deriv-active-symbols-v1",
+        discovered_at: new Date().toISOString(),
+        market: candidate.market,
+        subgroup: candidate.subgroup,
+        submarket: candidate.submarket,
+        pip_size: candidate.pipSize,
+        validation_required: true,
+        execution_eligible: false,
+      },
+    });
+    if (mapping.error) {
+      if (!existingInstrument.data?.id) await supabaseAdmin.from("instruments").delete().eq("id", instrumentId);
+      throw new Error(`Unable to map ${candidate.providerSymbol}: ${mapping.error.message}`);
+    }
+
+    imported.push({
+      providerSymbol: candidate.providerSymbol,
+      cossaSymbol: candidate.cossaSymbol,
+      displayName: candidate.displayName,
+      instrumentId,
+      enabled: false,
+      validationStatus: "experimental",
+      executionEligible: false,
+    });
+  }
+
+  return {
+    ok: true as const,
+    provider: "deriv",
+    selectedCount: selected.length,
+    importedCount: imported.length,
+    skippedCount: skipped.length,
+    imported,
+    skipped,
   };
 }
