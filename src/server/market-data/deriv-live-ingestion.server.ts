@@ -92,8 +92,7 @@ async function markProviderFailure(providerId: string) {
     .eq("id", providerId)
     .single();
   const failures = Math.max(0, current.data?.consecutive_failures ?? 0) + 1;
-  const circuitOpenUntil =
-    failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
+  const circuitOpenUntil = failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
   await supabaseAdmin
     .from("market_data_providers")
     .update({

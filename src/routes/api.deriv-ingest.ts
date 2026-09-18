@@ -24,8 +24,7 @@ export const Route = createFileRoute("/api/deriv-ingest")({
             headers: { "cache-control": "no-store" },
           });
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "Deriv ingestion failed";
+          const message = error instanceof Error ? error.message : "Deriv ingestion failed";
           console.error("Deriv ingestion failed", error);
           return Response.json(
             { ok: false, error: message },
