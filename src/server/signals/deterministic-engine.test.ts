@@ -17,10 +17,11 @@ describe("buildTradePlan", () => {
     ).toThrow("At least 60 closed candles are required");
   });
 
-  it("creates a complete bullish plan when deterministic evidence is strong", () => {
+  it("creates a complete bullish plan with a database-compatible regime", () => {
     const closes = Array.from({ length: 100 }, (_, i) => 100 + i * 0.35);
     const plan = buildTradePlan(candlesFromCloses(closes));
     expect(plan.direction).toBe("buy");
+    expect(plan.regime).toBe("trending_up");
     expect(plan.entry).not.toBeNull();
     expect(plan.stopLoss).toBeLessThan(plan.entry!);
     expect(plan.takeProfit1).toBeGreaterThan(plan.entry!);
@@ -29,10 +30,11 @@ describe("buildTradePlan", () => {
     expect(plan.riskRewardRatio).toBe(3);
   });
 
-  it("creates a complete bearish plan when deterministic evidence is strong", () => {
+  it("creates a complete bearish plan with a database-compatible regime", () => {
     const closes = Array.from({ length: 100 }, (_, i) => 150 - i * 0.3);
     const plan = buildTradePlan(candlesFromCloses(closes));
     expect(plan.direction).toBe("sell");
+    expect(plan.regime).toBe("trending_down");
     expect(plan.entry).not.toBeNull();
     expect(plan.stopLoss).toBeGreaterThan(plan.entry!);
     expect(plan.takeProfit1).toBeLessThan(plan.entry!);
@@ -44,6 +46,7 @@ describe("buildTradePlan", () => {
     const closes = Array.from({ length: 100 }, (_, i) => 100 + Math.sin(i / 3) * 0.05);
     const plan = buildTradePlan(candlesFromCloses(closes));
     expect(plan.direction).toBe("wait");
+    expect(plan.regime).toBe("ranging");
     expect(plan.entry).toBeNull();
     expect(plan.stopLoss).toBeNull();
   });
