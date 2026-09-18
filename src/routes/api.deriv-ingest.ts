@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { runDerivLiveIngestion } from "@/server/market-data/deriv-live-ingestion.server";
+import { runEnabledDerivIngestion } from "@/server/market-data/deriv-live-ingestion.server";
 
 function authorized(request: Request) {
   const expected = process.env.CRON_SECRET;
@@ -18,12 +18,9 @@ export const Route = createFileRoute("/api/deriv-ingest")({
         }
 
         try {
-          const result = await runDerivLiveIngestion({
-            providerSymbol: "1HZ75V",
-            timeframe: "5m",
-          });
+          const result = await runEnabledDerivIngestion();
           return Response.json(result, {
-            status: 200,
+            status: result.ok ? 200 : 503,
             headers: { "cache-control": "no-store" },
           });
         } catch (error) {
