@@ -31,6 +31,14 @@ export type NormalizedFill = {
   metadata?: Record<string, unknown>;
 };
 
+export type NormalizedPositionState = {
+  providerPositionRef: string;
+  providerSymbol: string;
+  side: ExecutionSide;
+  entryPrice: number;
+  quantity: number;
+};
+
 export type NormalizedPositionSnapshot = {
   providerPositionRef: string;
   currentPrice: number;
@@ -57,10 +65,10 @@ export interface ExecutionAdapter {
   readonly environment: ExecutionEnvironment;
 
   submit(order: NormalizedExecutionOrder): Promise<NormalizedFill>;
-  snapshot(providerPositionRef: string): Promise<NormalizedPositionSnapshot>;
+  snapshot(position: NormalizedPositionState): Promise<NormalizedPositionSnapshot>;
   close(
     order: NormalizedExecutionOrder,
-    providerPositionRef: string,
+    position: NormalizedPositionState,
     reason: "take_profit" | "stop_loss" | "manual" | "risk_stop",
   ): Promise<NormalizedClose>;
 }
