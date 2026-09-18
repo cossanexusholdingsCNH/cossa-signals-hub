@@ -14,21 +14,31 @@ export const Route = createFileRoute("/api/deriv-ingest")({
     handlers: {
       GET: async ({ request }) => {
         if (!authorized(request)) {
-          return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+          return Response.json(
+            { ok: false, error: "Unauthorized" },
+            { status: 401 },
+          );
         }
 
         try {
-          const result = await runDerivLiveIngestion({ providerSymbol: "1HZ100V", timeframe: "5m" });
+          const result = await runDerivLiveIngestion({
+            providerSymbol: "1HZ100V",
+            timeframe: "5m",
+          });
           return Response.json(result, {
             status: 200,
             headers: { "cache-control": "no-store" },
           });
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Deriv ingestion failed";
+          const message =
+            error instanceof Error ? error.message : "Deriv ingestion failed";
           console.error("Deriv ingestion failed", error);
           return Response.json(
             { ok: false, error: message },
-            { status: 503, headers: { "cache-control": "no-store" } },
+            {
+              status: 503,
+              headers: { "cache-control": "no-store" },
+            },
           );
         }
       },
