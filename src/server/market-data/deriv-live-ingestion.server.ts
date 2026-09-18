@@ -14,7 +14,9 @@ type RuntimeMapping = {
   providerSymbol: string;
 };
 
-async function resolveRuntimeMapping(providerSymbol: string): Promise<RuntimeMapping> {
+async function resolveRuntimeMapping(
+  providerSymbol: string,
+): Promise<RuntimeMapping> {
   const provider = await supabaseAdmin
     .from("market_data_providers")
     .select("id,enabled,circuit_open_until")
@@ -22,7 +24,9 @@ async function resolveRuntimeMapping(providerSymbol: string): Promise<RuntimeMap
     .single();
 
   if (provider.error || !provider.data) {
-    throw new Error(`Deriv provider is not configured: ${provider.error?.message ?? "missing row"}`);
+    throw new Error(
+      `Deriv provider is not configured: ${provider.error?.message ?? "missing row"}`,
+    );
   }
   if (!provider.data.enabled) throw new Error("Deriv provider is disabled");
   if (
@@ -40,9 +44,13 @@ async function resolveRuntimeMapping(providerSymbol: string): Promise<RuntimeMap
     .single();
 
   if (mapping.error || !mapping.data) {
-    throw new Error(`Deriv instrument mapping is missing: ${mapping.error?.message ?? providerSymbol}`);
+    throw new Error(
+      `Deriv instrument mapping is missing: ${mapping.error?.message ?? providerSymbol}`,
+    );
   }
-  if (!mapping.data.enabled) throw new Error(`Deriv mapping ${providerSymbol} is disabled`);
+  if (!mapping.data.enabled) {
+    throw new Error(`Deriv mapping ${providerSymbol} is disabled`);
+  }
 
   return {
     instrumentId: mapping.data.instrument_id,
@@ -59,20 +67,33 @@ async function startRun(mapping: RuntimeMapping) {
       instrument_id: mapping.instrumentId,
       run_type: "candle_refresh",
       status: "running",
-      metadata: { provider_symbol: mapping.providerSymbol, runtime: "deriv-live-v1" },
+      metadata: {
+        provider_symbol: mapping.providerSymbol,
+        runtime: "deriv-live-v1",
+      },
     })
     .select("id,started_at")
     .single();
-  if (error || !data?.id) throw new Error(`Unable to start ingestion run: ${error?.message ?? "missing id"}`);
+  if (error || !data?.id) {
+    throw new Error(
+      `Unable to start ingestion run: ${error?.message ?? "missing id"}`,
+    );
+  }
   return data;
 }
 
 async function markProviderSuccess(providerId: string, at: string) {
   const { error } = await supabaseAdmin
     .from("market_data_providers")
-    .update({ last_success_at: at, consecutive_failures: 0, circuit_open_until: null })
+    .update({
+      last_success_at: at,
+      consecutive_failures: 0,
+      circuit_open_until: null,
+    })
     .eq("id", providerId);
-  if (error) throw new Error(`Unable to update Deriv heartbeat: ${error.message}`);
+  if (error) {
+    throw new Error(`Unable to update Deriv heartbeat: ${error.message}`);
+  }
 }
 
 async function markProviderFailure(providerId: string) {
@@ -82,7 +103,8 @@ async function markProviderFailure(providerId: string) {
     .eq("id", providerId)
     .single();
   const failures = Math.max(0, current.data?.consecutive_failures ?? 0) + 1;
-  const circuitOpenUntil = failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
+  const circuitOpenUntil =
+    failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
   await supabaseAdmin
     .from("market_data_providers")
     .update({
@@ -93,10 +115,17 @@ async function markProviderFailure(providerId: string) {
     .eq("id", providerId);
 }
 
-async function persistTick(mapping: RuntimeMapping, tick: Awaited<ReturnType<typeof fetchDerivTick>>) {
+async function persistTick(
+  mapping: RuntimeMapping,
+  tick: Awaited<ReturnType<typeof fetchDerivTick>>,
+) {
   const tickAt = new Date(tick.epoch * 1000);
-  if (!Number.isFinite(tickAt.getTime())) throw new Error("Deriv returned an invalid tick timestamp");
-  if (Math.abs(Date.now() - tickAt.getTime()) > 120_000) throw new Error("Deriv tick is stale");
+  if (!Number.isFinite(tickAt.getTime())) {
+    throw new Error("Deriv returned an invalid tick timestamp");
+  }
+  if (Math.abs(Date.now() - tickAt.getTime()) > 120_000) {
+    throw new Error("Deriv tick is stale");
+  }
 
   const { error } = await supabaseAdmin.from("market_ticks").upsert(
     {
@@ -112,9 +141,14 @@ async function persistTick(mapping: RuntimeMapping, tick: Awaited<ReturnType<typ
       is_demo: false,
       metadata: { runtime: "deriv-live-v1" },
     },
-    { onConflict: "instrument_id,provider_id,tick_at,price", ignoreDuplicates: true },
+    {
+      onConflict: "instrument_id,provider_id,tick_at,price",
+      ignoreDuplicates: true,
+    },
   );
-  if (error) throw new Error(`Unable to persist Deriv tick: ${error.message}`);
+  if (error) {
+    throw new Error(`Unable to persist Deriv tick: ${error.message}`);
+  }
 
   // Promote the canonical instrument only after a genuine, fresh provider tick has been stored.
   const instrument = await supabaseAdmin
@@ -127,12 +161,18 @@ async function persistTick(mapping: RuntimeMapping, tick: Awaited<ReturnType<typ
       is_demo: false,
     })
     .eq("id", mapping.instrumentId);
-  if (instrument.error) throw new Error(`Unable to update live instrument state: ${instrument.error.message}`);
+  if (instrument.error) {
+    throw new Error(
+      `Unable to update live instrument state: ${instrument.error.message}`,
+    );
+  }
 
   return tickAt;
 }
 
-export async function runDerivLiveIngestion(input: DerivLiveIngestionInput) {
+export async function runDerivLiveIngestion(
+  input: DerivLiveIngestionInput,
+) {
   const providerSymbol = input.providerSymbol.trim();
   if (!providerSymbol) throw new Error("providerSymbol is required");
   const timeframe = input.timeframe ?? "5m";
@@ -173,7 +213,9 @@ export async function runDerivLiveIngestion(input: DerivLiveIngestionInput) {
         },
       })
       .eq("id", run.id);
-    if (error) throw new Error(`Unable to finish ingestion audit: ${error.message}`);
+    if (error) {
+      throw new Error(`Unable to finish ingestion audit: ${error.message}`);
+    }
 
     return {
       ok: true as const,
@@ -189,7 +231,8 @@ export async function runDerivLiveIngestion(input: DerivLiveIngestionInput) {
     };
   } catch (error) {
     await markProviderFailure(mapping.providerId);
-    const message = error instanceof Error ? error.message : "Unknown Deriv ingestion failure";
+    const message =
+      error instanceof Error ? error.message : "Unknown Deriv ingestion failure";
     await supabaseAdmin
       .from("market_data_ingestion_runs")
       .update({
