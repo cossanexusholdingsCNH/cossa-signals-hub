@@ -1,0 +1,85 @@
+name: Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+      - 'upgrade/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  execution-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Verify lockfile is synchronized
+        run: git diff --exit-code -- bun.lock
+
+      - name: Run deterministic tests
+        run: bun run test
+
+      - name: Verify execution-engine formatting
+        run: >-
+          bunx prettier --check
+          src/server/market-data/deriv.ts
+          src/server/signals/deterministic-engine.ts
+          src/server/signals/deterministic-engine.test.ts
+          src/server/signals/deriv-signal-pipeline.ts
+          src/server/signals/persist-pipeline.server.ts
+          src/server/execution/risk-engine.ts
+          src/server/execution/risk-engine.test.ts
+          src/server/execution/paper-coordinator.server.ts
+
+      - name: Check execution-engine lint
+        run: >-
+          bunx eslint
+          src/server/market-data/deriv.ts
+          src/server/signals/deterministic-engine.ts
+          src/server/signals/deterministic-engine.test.ts
+          src/server/signals/deriv-signal-pipeline.ts
+          src/server/signals/persist-pipeline.server.ts
+          src/server/execution/risk-engine.ts
+          src/server/execution/risk-engine.test.ts
+          src/server/execution/paper-coordinator.server.ts
+
+      - name: Build application
+        run: bun run build
+
+  legacy-lint-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Audit full repository lint debt
+        run: bun run lint
