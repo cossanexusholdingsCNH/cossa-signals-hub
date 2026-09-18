@@ -90,12 +90,21 @@ export async function monitorOpenPosition(input: {
     id: string;
     provider_position_ref: string;
     entry_price: number;
+    quantity: number;
+    side: "buy" | "sell";
     stop_loss: number | null;
     take_profit_1: number | null;
   };
 }) {
   const { supabase, adapter, order, position } = input;
-  const snapshot = await adapter.snapshot(position.provider_position_ref);
+  const durablePosition = {
+    providerPositionRef: position.provider_position_ref,
+    providerSymbol: order.providerSymbol,
+    side: position.side,
+    entryPrice: num(position.entry_price, "entry price"),
+    quantity: num(position.quantity, "position quantity"),
+  };
+  const snapshot = await adapter.snapshot(durablePosition);
 
   const boundary = shouldCloseAtRiskBoundary({
     side: order.side,
@@ -113,7 +122,7 @@ export async function monitorOpenPosition(input: {
     return { closed: false, snapshot };
   }
 
-  const closed = await adapter.close(order, position.provider_position_ref, boundary);
+  const closed = await adapter.close(order, durablePosition, boundary);
   const closeSide = order.side === "buy" ? "sell" : "buy";
 
   const { error: closeFillError } = await supabase.from("execution_fills").upsert(
