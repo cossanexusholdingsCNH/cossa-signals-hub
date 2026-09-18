@@ -120,7 +120,9 @@ async function requestAttempt<T>(
 
     socket.onerror = () => {
       finish(() =>
-        reject(new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED")),
+        reject(
+          new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"),
+        ),
       );
     };
 
@@ -195,8 +197,10 @@ export async function fetchDerivTick(symbol: string): Promise<DerivTick> {
       symbol: String(message.tick.symbol || symbol),
       epoch: finiteNumber(message.tick.epoch, "tick epoch"),
       quote: finiteNumber(message.tick.quote, "tick quote"),
-      bid: message.tick.bid === undefined ? undefined : finiteNumber(message.tick.bid, "tick bid"),
-      ask: message.tick.ask === undefined ? undefined : finiteNumber(message.tick.ask, "tick ask"),
+      bid:
+        message.tick.bid === undefined ? undefined : finiteNumber(message.tick.bid, "tick bid"),
+      ask:
+        message.tick.ask === undefined ? undefined : finiteNumber(message.tick.ask, "tick ask"),
     };
   });
 }
