@@ -92,7 +92,8 @@ async function markProviderFailure(providerId: string) {
     .eq("id", providerId)
     .single();
   const failures = Math.max(0, current.data?.consecutive_failures ?? 0) + 1;
-  const circuitOpenUntil = failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
+  const circuitOpenUntil =
+    failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
   await supabaseAdmin
     .from("market_data_providers")
     .update({
@@ -108,8 +109,12 @@ async function persistTick(
   tick: Awaited<ReturnType<typeof fetchDerivTick>>,
 ) {
   const tickAt = new Date(tick.epoch * 1000);
-  if (!Number.isFinite(tickAt.getTime())) throw new Error("Deriv returned an invalid tick timestamp");
-  if (Math.abs(Date.now() - tickAt.getTime()) > 120_000) throw new Error("Deriv tick is stale");
+  if (!Number.isFinite(tickAt.getTime())) {
+    throw new Error("Deriv returned an invalid tick timestamp");
+  }
+  if (Math.abs(Date.now() - tickAt.getTime()) > 120_000) {
+    throw new Error("Deriv tick is stale");
+  }
 
   const { error } = await supabaseAdmin.from("market_ticks").upsert(
     {
@@ -139,7 +144,9 @@ async function persistTick(
       is_demo: false,
     })
     .eq("id", mapping.instrumentId);
-  if (instrument.error) throw new Error(`Unable to update live instrument state: ${instrument.error.message}`);
+  if (instrument.error) {
+    throw new Error(`Unable to update live instrument state: ${instrument.error.message}`);
+  }
 
   return tickAt;
 }
@@ -224,15 +231,21 @@ export async function runEnabledDerivIngestion() {
     .order("provider_symbol");
 
   if (error) throw new Error(`Unable to load enabled Deriv mappings: ${error.message}`);
-  if (!mappings?.length) throw new Error("No enabled Deriv instrument mappings are configured");
+  if (!mappings?.length) {
+    throw new Error("No enabled Deriv instrument mappings are configured");
+  }
 
   const results = [];
   for (const mapping of mappings) {
-    const instrument = Array.isArray(mapping.instruments) ? mapping.instruments[0] : mapping.instruments;
+    const instrument = Array.isArray(mapping.instruments)
+      ? mapping.instruments[0]
+      : mapping.instruments;
     if (!instrument?.enabled) continue;
     const timeframe = (instrument.timeframe_default || "5m") as SupportedTimeframe;
     try {
-      results.push(await runDerivLiveIngestion({ providerSymbol: mapping.provider_symbol, timeframe }));
+      results.push(
+        await runDerivLiveIngestion({ providerSymbol: mapping.provider_symbol, timeframe }),
+      );
     } catch (error) {
       results.push({
         ok: false as const,
