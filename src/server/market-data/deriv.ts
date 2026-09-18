@@ -3,8 +3,7 @@
 // The public WebSocket endpoint does not require authentication.
 
 export const DERIV_PUBLIC_WS_URL =
-  process.env.DERIV_PUBLIC_WS_URL?.trim() ||
-  "wss://api.derivws.com/trading/v1/options/ws/public";
+  process.env.DERIV_PUBLIC_WS_URL?.trim() || "wss://api.derivws.com/trading/v1/options/ws/public";
 
 export type DerivActiveSymbol = {
   underlying_symbol?: string;
@@ -121,10 +120,7 @@ async function requestAttempt<T>(
     socket.onerror = () => {
       finish(() =>
         reject(
-          new DerivMarketDataError(
-            "Deriv WebSocket connection failed",
-            "WS_CONNECTION_FAILED",
-          ),
+          new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"),
         ),
       );
     };
