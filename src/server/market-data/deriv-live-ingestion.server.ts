@@ -14,9 +14,7 @@ type RuntimeMapping = {
   providerSymbol: string;
 };
 
-async function resolveRuntimeMapping(
-  providerSymbol: string,
-): Promise<RuntimeMapping> {
+async function resolveRuntimeMapping(providerSymbol: string): Promise<RuntimeMapping> {
   const provider = await supabaseAdmin
     .from("market_data_providers")
     .select("id,enabled,circuit_open_until")
@@ -75,9 +73,7 @@ async function startRun(mapping: RuntimeMapping) {
     .select("id,started_at")
     .single();
   if (error || !data?.id) {
-    throw new Error(
-      `Unable to start ingestion run: ${error?.message ?? "missing id"}`,
-    );
+    throw new Error(`Unable to start ingestion run: ${error?.message ?? "missing id"}`);
   }
   return data;
 }
@@ -103,8 +99,7 @@ async function markProviderFailure(providerId: string) {
     .eq("id", providerId)
     .single();
   const failures = Math.max(0, current.data?.consecutive_failures ?? 0) + 1;
-  const circuitOpenUntil =
-    failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
+  const circuitOpenUntil = failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
   await supabaseAdmin
     .from("market_data_providers")
     .update({
@@ -162,17 +157,13 @@ async function persistTick(
     })
     .eq("id", mapping.instrumentId);
   if (instrument.error) {
-    throw new Error(
-      `Unable to update live instrument state: ${instrument.error.message}`,
-    );
+    throw new Error(`Unable to update live instrument state: ${instrument.error.message}`);
   }
 
   return tickAt;
 }
 
-export async function runDerivLiveIngestion(
-  input: DerivLiveIngestionInput,
-) {
+export async function runDerivLiveIngestion(input: DerivLiveIngestionInput) {
   const providerSymbol = input.providerSymbol.trim();
   if (!providerSymbol) throw new Error("providerSymbol is required");
   const timeframe = input.timeframe ?? "5m";
@@ -231,8 +222,7 @@ export async function runDerivLiveIngestion(
     };
   } catch (error) {
     await markProviderFailure(mapping.providerId);
-    const message =
-      error instanceof Error ? error.message : "Unknown Deriv ingestion failure";
+    const message = error instanceof Error ? error.message : "Unknown Deriv ingestion failure";
     await supabaseAdmin
       .from("market_data_ingestion_runs")
       .update({
