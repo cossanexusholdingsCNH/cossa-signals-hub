@@ -62,6 +62,10 @@ export class DerivMarketDataError extends Error {
   }
 }
 
+const DERIV_TRANSIENT_ERROR_CODES = new Set(["WS_CONNECTION_FAILED", "REQUEST_TIMEOUT"]);
+const DERIV_MAX_ATTEMPTS = 3;
+const DERIV_RETRY_BASE_DELAY_MS = 250;
+
 function finiteNumber(value: unknown, label: string): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) {
@@ -70,10 +74,22 @@ function finiteNumber(value: unknown, label: string): number {
   return parsed;
 }
 
-async function requestOnce<T>(
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientDerivError(error: unknown): error is DerivMarketDataError {
+  return (
+    error instanceof DerivMarketDataError &&
+    error.code !== undefined &&
+    DERIV_TRANSIENT_ERROR_CODES.has(error.code)
+  );
+}
+
+async function requestAttempt<T>(
   payload: Record<string, unknown>,
   select: (message: DerivEnvelope) => T | undefined,
-  timeoutMs = 10_000,
+  timeoutMs: number,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const socket = new WebSocket(DERIV_PUBLIC_WS_URL);
@@ -92,7 +108,9 @@ async function requestOnce<T>(
     };
 
     const timer = setTimeout(() => {
-      finish(() => reject(new DerivMarketDataError("Deriv market-data request timed out")));
+      finish(() =>
+        reject(new DerivMarketDataError("Deriv market-data request timed out", "REQUEST_TIMEOUT")),
+      );
     }, timeoutMs);
 
     socket.onopen = () => {
@@ -100,7 +118,9 @@ async function requestOnce<T>(
     };
 
     socket.onerror = () => {
-      finish(() => reject(new DerivMarketDataError("Deriv WebSocket connection failed")));
+      finish(() =>
+        reject(new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED")),
+      );
     };
 
     socket.onmessage = (event) => {
@@ -131,6 +151,29 @@ async function requestOnce<T>(
       }
     };
   });
+}
+
+async function requestOnce<T>(
+  payload: Record<string, unknown>,
+  select: (message: DerivEnvelope) => T | undefined,
+  timeoutMs = 10_000,
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= DERIV_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await requestAttempt(payload, select, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (!isTransientDerivError(error) || attempt === DERIV_MAX_ATTEMPTS) throw error;
+
+      const exponentialDelay = DERIV_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+      const jitter = Math.floor(Math.random() * DERIV_RETRY_BASE_DELAY_MS);
+      await sleep(exponentialDelay + jitter);
+    }
+  }
+
+  throw lastError;
 }
 
 export async function fetchDerivActiveSymbols(): Promise<DerivActiveSymbol[]> {
