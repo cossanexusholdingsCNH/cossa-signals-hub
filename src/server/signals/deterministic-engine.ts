@@ -8,11 +8,7 @@ export type Candle = {
 
 export type SignalDirection = "buy" | "sell" | "wait";
 export type MarketRegime =
-  | "trending_up"
-  | "trending_down"
-  | "ranging"
-  | "high_volatility"
-  | "unknown";
+  "trending_up" | "trending_down" | "ranging" | "high_volatility" | "unknown";
 
 export type IndicatorSnapshot = {
   rsi14: number;
@@ -42,8 +38,7 @@ export type TradePlan = {
 };
 
 const finite = (n: number) => Number.isFinite(n);
-const mean = (values: number[]) =>
-  values.reduce((sum, value) => sum + value, 0) / values.length;
+const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 
 function validateCandles(candles: Candle[]) {
   if (candles.length < 60) throw new Error("At least 60 closed candles are required");
@@ -52,10 +47,7 @@ function validateCandles(candles: Candle[]) {
       throw new Error("Candle contains a non-finite price");
     if (c.open <= 0 || c.high <= 0 || c.low <= 0 || c.close <= 0)
       throw new Error("Candle prices must be positive");
-    if (
-      c.high < Math.max(c.open, c.close, c.low) ||
-      c.low > Math.min(c.open, c.close, c.high)
-    ) {
+    if (c.high < Math.max(c.open, c.close, c.low) || c.low > Math.min(c.open, c.close, c.high)) {
       throw new Error("Invalid OHLC candle invariant");
     }
   }
@@ -135,8 +127,7 @@ export function buildTradePlan(candles: Candle[]): TradePlan {
 
   let regime: MarketRegime = "ranging";
   if (atrPct >= 2.5) regime = "high_volatility";
-  else if (trendDistancePct >= 0.18)
-    regime = ema20 >= ema50 ? "trending_up" : "trending_down";
+  else if (trendDistancePct >= 0.18) regime = ema20 >= ema50 ? "trending_up" : "trending_down";
 
   let bullScore = 0;
   let bearScore = 0;
