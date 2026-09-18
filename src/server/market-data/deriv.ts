@@ -198,9 +198,13 @@ export async function fetchDerivTick(symbol: string): Promise<DerivTick> {
       epoch: finiteNumber(message.tick.epoch, "tick epoch"),
       quote: finiteNumber(message.tick.quote, "tick quote"),
       bid:
-        message.tick.bid === undefined ? undefined : finiteNumber(message.tick.bid, "tick bid"),
+        message.tick.bid === undefined
+          ? undefined
+          : finiteNumber(message.tick.bid, "tick bid"),
       ask:
-        message.tick.ask === undefined ? undefined : finiteNumber(message.tick.ask, "tick ask"),
+        message.tick.ask === undefined
+          ? undefined
+          : finiteNumber(message.tick.ask, "tick ask"),
     };
   });
 }
