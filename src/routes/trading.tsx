@@ -8,6 +8,7 @@ import { MarketExecutionChart } from "@/components/trading/MarketExecutionChart"
 import { PositionLifecyclePanel } from "@/components/trading/PositionLifecyclePanel";
 import { useAuth } from "@/hooks/useAuth";
 import { useInstruments, useLiveSignals } from "@/hooks/useCossa";
+import { useDerivLiveTick } from "@/hooks/useDerivLiveTick";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/trading")({ component: TradingPage });
@@ -26,10 +27,7 @@ function TradingWorkspace() {
   const { data: signals = [] } = useLiveSignals(100);
   const enabled = instruments.filter((item) => item.instrument_enabled !== false);
   const preferredSignal = useMemo(
-    () =>
-      signals.find((signal) =>
-        enabled.some((item) => item.symbol === signal.instrument?.symbol),
-      ),
+    () => signals.find((signal) => enabled.some((item) => item.symbol === signal.instrument?.symbol)),
     [enabled, signals],
   );
   const [symbol, setSymbol] = useState("");
@@ -57,15 +55,39 @@ function TradingWorkspace() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("trading_accounts")
-        .select(
-          "id,provider,account_label,account_environment,execution_mode,enabled,currency,emergency_stop",
-        )
+        .select("id,provider,account_label,account_environment,execution_mode,enabled,currency,emergency_stop")
         .eq("user_id", user!.id)
         .order("account_environment");
       if (error) throw error;
       return data ?? [];
     },
   });
+
+  const streamConfig = useQuery({
+    queryKey: ["market_stream_config", instrument?.id],
+    enabled: Boolean(instrument?.id),
+    queryFn: async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Authentication required for live market stream");
+      const response = await fetch(`/api/market-stream-config?instrumentId=${encodeURIComponent(instrument!.id)}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        stream?: { provider?: string | null; providerSymbol?: string | null; supportsStreaming?: boolean } | null;
+      };
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Unable to load stream config");
+      return payload.stream ?? null;
+    },
+  });
+
+  const liveTick = useDerivLiveTick(
+    streamConfig.data?.provider === "deriv" && streamConfig.data.supportsStreaming
+      ? streamConfig.data.providerSymbol
+      : null,
+  );
 
   const candles = useQuery({
     queryKey: ["market_candles", instrument?.id, selectedTimeframe],
@@ -74,14 +96,19 @@ function TradingWorkspace() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("market_candles")
-        .select("open_time,close")
+        .select("open_time,close_time,open,high,low,close")
         .eq("instrument_id", instrument!.id)
         .eq("timeframe", selectedTimeframe)
         .order("open_time", { ascending: false })
         .limit(180);
       if (error) throw error;
       return (data ?? []).reverse().map((row) => ({
-        at: new Date(row.open_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        openTime: row.open_time,
+        closeTime: row.close_time,
+        label: new Date(row.open_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        open: Number(row.open),
+        high: Number(row.high),
+        low: Number(row.low),
         close: Number(row.close),
       }));
     },
@@ -90,7 +117,7 @@ function TradingWorkspace() {
   const selectedAccount =
     (accounts.data ?? []).find((account) => account.id === accountId) ?? accounts.data?.[0];
   const currentPrice =
-    Number(instrument?.current_price ?? candles.data?.at(-1)?.close ?? 0) || null;
+    liveTick.price ?? Number(instrument?.current_price ?? candles.data?.at(-1)?.close ?? 0) || null;
 
   function selectInstrument(nextSymbol: string) {
     setSymbol(nextSymbol);
@@ -117,25 +144,15 @@ function TradingWorkspace() {
       return;
     }
     if (selectedAccount.account_environment === "demo" && !activeSignal) {
-      setResult({
-        ok: false,
-        message: "Demo auto execution requires a current Cossa signal. Choose an instrument with an active signal.",
-      });
+      setResult({ ok: false, message: "Demo auto execution requires a current Cossa signal. Choose an instrument with an active signal." });
       return;
     }
     const requestedEntry = Number(entry || currentPrice);
     const requestedAmount = Number(amount);
     const sl = Number(stopLoss);
     const tp = Number(takeProfit);
-    if (
-      ![requestedEntry, requestedAmount, sl, tp].every(
-        (value) => Number.isFinite(value) && value > 0,
-      )
-    ) {
-      setResult({
-        ok: false,
-        message: "Amount, entry, stop loss and take profit must all be valid positive numbers.",
-      });
+    if (![requestedEntry, requestedAmount, sl, tp].every((value) => Number.isFinite(value) && value > 0)) {
+      setResult({ ok: false, message: "Amount, entry, stop loss and take profit must all be valid positive numbers." });
       return;
     }
 
@@ -163,41 +180,20 @@ function TradingWorkspace() {
         error?: string;
         order?: { id?: string; status?: string };
         lifecycle?: { positionId?: string } | null;
-        decision?: {
-          approved?: boolean;
-          confirmationRequired?: boolean;
-          rejectionReasons?: string[];
-        };
+        decision?: { approved?: boolean; confirmationRequired?: boolean; rejectionReasons?: string[] };
       };
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Order submission failed");
       if (payload.decision?.confirmationRequired) {
-        setResult({
-          ok: true,
-          message: `Live order ${payload.order?.id ?? ""} created and awaiting explicit confirmation.`,
-        });
+        setResult({ ok: true, message: `Live order ${payload.order?.id ?? ""} created and awaiting explicit confirmation.` });
       } else if (payload.decision?.approved && payload.lifecycle?.positionId) {
-        setResult({
-          ok: true,
-          message: `Demo order filled. Position ${payload.lifecycle.positionId} is now open in the execution ledger.`,
-        });
+        setResult({ ok: true, message: `Demo order filled. Position ${payload.lifecycle.positionId} is now open in the execution ledger.` });
       } else if (payload.decision?.approved) {
-        setResult({
-          ok: true,
-          message: `Demo order ${payload.order?.id ?? ""} passed server risk checks.`,
-        });
+        setResult({ ok: true, message: `Demo order ${payload.order?.id ?? ""} passed server risk checks.` });
       } else {
-        setResult({
-          ok: false,
-          message:
-            payload.decision?.rejectionReasons?.join("; ") ||
-            "Order was rejected by execution risk controls.",
-        });
+        setResult({ ok: false, message: payload.decision?.rejectionReasons?.join("; ") || "Order was rejected by execution risk controls." });
       }
     } catch (error) {
-      setResult({
-        ok: false,
-        message: error instanceof Error ? error.message : "Order submission failed",
-      });
+      setResult({ ok: false, message: error instanceof Error ? error.message : "Order submission failed" });
     } finally {
       setSubmitting(false);
     }
@@ -207,13 +203,10 @@ function TradingWorkspace() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-            Execution workspace
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Execution workspace</p>
           <h1 className="mt-1 text-2xl font-semibold">Cossa Trading Terminal</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            One trading surface for Demo and Live. Account environment changes the execution
-            adapter; analysis, charting and order lifecycle stay unified.
+            One trading surface for Demo and Live. Market streaming is read-only; trade execution remains server-controlled.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
@@ -225,62 +218,29 @@ function TradingWorkspace() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-gold/50 bg-card p-4">
           <div>
             <p className="text-sm font-semibold">Demo account required</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Create the virtual Deriv Demo account first so the risk engine has a balance,
-              snapshot and daily risk baseline.
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Create the virtual Deriv Demo account first so the risk engine has a balance, snapshot and daily risk baseline.</p>
           </div>
-          <Link
-            to="/demo-setup"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
-          >
-            Set up Demo account
-          </Link>
+          <Link to="/demo-setup" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Set up Demo account</Link>
         </div>
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3">
-            <label className="text-xs text-muted-foreground">
-              Instrument
-              <select
-                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
-                value={selectedSymbol}
-                onChange={(event) => selectInstrument(event.target.value)}
-              >
-                {enabled.map((item) => (
-                  <option key={item.id} value={item.symbol}>
-                    {item.display_name}
-                  </option>
-                ))}
+            <label className="text-xs text-muted-foreground">Instrument
+              <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground" value={selectedSymbol} onChange={(event) => selectInstrument(event.target.value)}>
+                {enabled.map((item) => <option key={item.id} value={item.symbol}>{item.display_name}</option>)}
               </select>
             </label>
-            <label className="text-xs text-muted-foreground">
-              Timeframe
-              <select
-                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
-                value={selectedTimeframe}
-                onChange={(event) => setTimeframe(event.target.value)}
-              >
-                {["1m", "5m", "15m", "30m", "1h", "4h"].map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
+            <label className="text-xs text-muted-foreground">Timeframe
+              <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground" value={selectedTimeframe} onChange={(event) => setTimeframe(event.target.value)}>
+                {["1m", "5m", "15m", "30m", "1h", "4h"].map((value) => <option key={value}>{value}</option>)}
               </select>
             </label>
-            <label className="text-xs text-muted-foreground">
-              Trading account
-              <select
-                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
-                value={selectedAccount?.id ?? ""}
-                onChange={(event) => setAccountId(event.target.value)}
-              >
+            <label className="text-xs text-muted-foreground">Trading account
+              <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground" value={selectedAccount?.id ?? ""} onChange={(event) => setAccountId(event.target.value)}>
                 {(accounts.data ?? []).length === 0 ? <option value="">No account configured</option> : null}
-                {(accounts.data ?? []).map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.account_label} · {account.account_environment.toUpperCase()}
-                  </option>
-                ))}
+                {(accounts.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.account_label} · {account.account_environment.toUpperCase()}</option>)}
               </select>
             </label>
           </div>
@@ -290,179 +250,76 @@ function TradingWorkspace() {
             timeframe={selectedTimeframe}
             data={candles.data ?? []}
             currentPrice={currentPrice}
+            liveEpoch={liveTick.epoch}
+            liveConnected={liveTick.connected}
+            bid={liveTick.bid}
+            ask={liveTick.ask}
             entryPrice={Number(entry) || activeSignal?.entry_price || null}
             stopLoss={Number(stopLoss) || activeSignal?.stop_loss || null}
             takeProfit1={Number(takeProfit) || activeSignal?.take_profit_1 || null}
           />
 
+          {streamConfig.data?.provider === "deriv" && liveTick.error ? (
+            <div className="rounded-lg border border-destructive/40 p-3 text-xs text-destructive">Live Deriv stream: {liveTick.error}</div>
+          ) : null}
           {candles.isFetched && (candles.data ?? []).length === 0 ? (
-            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
-              No stored {selectedTimeframe} candles are available for {selectedSymbol || "this instrument"} yet.
-              Choose another timeframe or an instrument with a current Cossa signal.
-            </div>
+            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">No stored {selectedTimeframe} OHLC candles are available for {selectedSymbol || "this instrument"} yet. Choose another timeframe or an instrument with a current Cossa signal.</div>
           ) : null}
 
           <div className="grid gap-4 md:grid-cols-2">
             <section className="rounded-xl border bg-card p-4">
-              <div className="flex items-center gap-2">
-                <Activity className="size-4 text-primary" />
-                <h2 className="font-semibold">Cossa analysis</h2>
-              </div>
+              <div className="flex items-center gap-2"><Activity className="size-4 text-primary" /><h2 className="font-semibold">Cossa analysis</h2></div>
               {activeSignal ? (
                 <div className="mt-3 space-y-2 text-sm">
-                  <p>
-                    <span className="text-muted-foreground">Decision:</span>{" "}
-                    <strong className="uppercase">{activeSignal.direction}</strong> ·{" "}
-                    {activeSignal.confidence_score}% confidence
-                  </p>
-                  <p className="text-muted-foreground">
-                    {activeSignal.ai_summary ?? activeSignal.signal_reason ?? "Signal plan available."}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={loadSignalPlan}
-                    className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
-                  >
-                    Load signal into order ticket
-                  </button>
+                  <p><span className="text-muted-foreground">Decision:</span> <strong className="uppercase">{activeSignal.direction}</strong> · {activeSignal.confidence_score}% confidence</p>
+                  <p className="text-muted-foreground">{activeSignal.ai_summary ?? activeSignal.signal_reason ?? "Signal plan available."}</p>
+                  <button type="button" onClick={loadSignalPlan} className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary">Load signal into order ticket</button>
                 </div>
               ) : (
                 <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>No active Cossa signal for this instrument.</p>
-                  {preferredSignal?.instrument?.symbol ? (
-                    <button
-                      type="button"
-                      onClick={() => selectInstrument(preferredSignal.instrument!.symbol)}
-                      className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
-                    >
-                      Open {preferredSignal.instrument.display_name ?? preferredSignal.instrument.symbol} signal
-                    </button>
-                  ) : null}
+                  <p>No active Cossa signal for this instrument. The chart indicators remain available for analysis, but Demo auto execution stays gated.</p>
+                  {preferredSignal?.instrument?.symbol ? <button type="button" onClick={() => selectInstrument(preferredSignal.instrument!.symbol)} className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary">Open {preferredSignal.instrument.display_name ?? preferredSignal.instrument.symbol} signal</button> : null}
                 </div>
               )}
             </section>
 
             <section className="rounded-xl border bg-card p-4">
-              <div className="flex items-center gap-2">
-                <WalletCards className="size-4 text-primary" />
-                <h2 className="font-semibold">Account state</h2>
-              </div>
+              <div className="flex items-center gap-2"><WalletCards className="size-4 text-primary" /><h2 className="font-semibold">Account state</h2></div>
               <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-                <p>
-                  Environment:{" "}
-                  <strong className="text-foreground">
-                    {selectedAccount?.account_environment?.toUpperCase() ?? "Not configured"}
-                  </strong>
-                </p>
-                <p>
-                  Provider:{" "}
-                  <strong className="text-foreground">{selectedAccount?.provider ?? "—"}</strong>
-                </p>
-                <p>
-                  Mode:{" "}
-                  <strong className="text-foreground">{selectedAccount?.execution_mode ?? "—"}</strong>
-                </p>
-                <p>
-                  Emergency stop:{" "}
-                  <strong className="text-foreground">
-                    {selectedAccount?.emergency_stop ? "ACTIVE" : "Clear"}
-                  </strong>
-                </p>
+                <p>Environment: <strong className="text-foreground">{selectedAccount?.account_environment?.toUpperCase() ?? "Not configured"}</strong></p>
+                <p>Provider: <strong className="text-foreground">{selectedAccount?.provider ?? "—"}</strong></p>
+                <p>Mode: <strong className="text-foreground">{selectedAccount?.execution_mode ?? "—"}</strong></p>
+                <p>Emergency stop: <strong className="text-foreground">{selectedAccount?.emergency_stop ? "ACTIVE" : "Clear"}</strong></p>
               </div>
-              {!selectedAccount ? (
-                <Link
-                  to="/demo-setup"
-                  className="mt-3 inline-flex rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
-                >
-                  Set up Deriv Demo
-                </Link>
-              ) : null}
+              {!selectedAccount ? <Link to="/demo-setup" className="mt-3 inline-flex rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary">Set up Deriv Demo</Link> : null}
             </section>
           </div>
         </div>
 
         <aside className="rounded-xl border bg-card p-4 xl:sticky xl:top-20 xl:self-start">
           <h2 className="text-lg font-semibold">Order ticket</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            The ticket uses the same lifecycle for Demo and Live.
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">The ticket uses the same lifecycle for Demo and Live.</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setSide("buy")}
-              className={`rounded-md border p-3 text-sm font-semibold ${side === "buy" ? "border-primary text-primary" : "border-border"}`}
-            >
-              BUY
-            </button>
-            <button
-              type="button"
-              onClick={() => setSide("sell")}
-              className={`rounded-md border p-3 text-sm font-semibold ${side === "sell" ? "border-primary text-primary" : "border-border"}`}
-            >
-              SELL
-            </button>
+            <button type="button" onClick={() => setSide("buy")} className={`rounded-md border p-3 text-sm font-semibold ${side === "buy" ? "border-primary text-primary" : "border-border"}`}>BUY</button>
+            <button type="button" onClick={() => setSide("sell")} className={`rounded-md border p-3 text-sm font-semibold ${side === "sell" ? "border-primary text-primary" : "border-border"}`}>SELL</button>
           </div>
           <div className="mt-4 space-y-3">
-            {[
-              { label: "Amount / size", value: amount, set: setAmount },
-              { label: "Entry", value: entry, set: setEntry },
-              { label: "Stop loss", value: stopLoss, set: setStopLoss },
-              { label: "Take profit", value: takeProfit, set: setTakeProfit },
-            ].map((field) => (
-              <label key={field.label} className="block text-xs text-muted-foreground">
-                {field.label}
-                <input
-                  type="number"
-                  step="any"
-                  value={field.value}
-                  onChange={(event) => field.set(event.target.value)}
-                  className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground"
-                />
+            {[{ label: "Amount / size", value: amount, set: setAmount }, { label: "Entry", value: entry, set: setEntry }, { label: "Stop loss", value: stopLoss, set: setStopLoss }, { label: "Take profit", value: takeProfit, set: setTakeProfit }].map((field) => (
+              <label key={field.label} className="block text-xs text-muted-foreground">{field.label}
+                <input type="number" step="any" value={field.value} onChange={(event) => field.set(event.target.value)} className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground" />
               </label>
             ))}
           </div>
           <div className="mt-4 rounded-lg border border-border p-3 text-xs text-muted-foreground">
-            {!selectedAccount
-              ? "No trading account configured. Set up the Deriv Demo account before submitting orders."
-              : selectedAccount.account_environment === "live"
-                ? "LIVE account selected. Submission creates an order awaiting explicit confirmation."
-                : activeSignal
-                  ? "DEMO account selected. Submission runs through signal-quality and risk evaluation before the durable fill lifecycle."
-                  : "DEMO account selected, but this instrument has no current Cossa signal. Choose an active signal before submitting."}
+            {!selectedAccount ? "No trading account configured. Set up the Deriv Demo account before submitting orders." : selectedAccount.account_environment === "live" ? "LIVE account selected. Submission creates an order awaiting explicit confirmation." : activeSignal ? "DEMO account selected. Submission runs through signal-quality and risk evaluation before the durable fill lifecycle." : "DEMO account selected, but this instrument has no current Cossa signal. Chart analysis is available; auto execution remains gated."}
           </div>
           {!selectedAccount ? (
-            <Link
-              to="/demo-setup"
-              className="mt-4 flex w-full justify-center rounded-md border border-border-gold px-4 py-3 text-sm font-semibold text-primary"
-            >
-              Set up Demo account
-            </Link>
+            <Link to="/demo-setup" className="mt-4 flex w-full justify-center rounded-md border border-border-gold px-4 py-3 text-sm font-semibold text-primary">Set up Demo account</Link>
           ) : (
-            <button
-              type="button"
-              disabled={
-                submitting ||
-                !instrument ||
-                selectedAccount.emergency_stop ||
-                (selectedAccount.account_environment === "demo" && !activeSignal)
-              }
-              onClick={() => void submitOrder()}
-              className="mt-4 w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? "Submitting…" : `Submit ${side.toUpperCase()}`}
-            </button>
+            <button type="button" disabled={submitting || !instrument || selectedAccount.emergency_stop || (selectedAccount.account_environment === "demo" && !activeSignal)} onClick={() => void submitOrder()} className="mt-4 w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Submitting…" : `Submit ${side.toUpperCase()}`}</button>
           )}
-          {result ? (
-            <div
-              className={`mt-3 rounded-md border p-3 text-xs ${result.ok ? "border-primary/40 text-primary" : "border-destructive/40 text-destructive"}`}
-            >
-              {result.message}
-            </div>
-          ) : null}
-          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-            The browser sends only an authenticated intent. Order creation and execution decisions
-            remain server-side.
-          </p>
+          {result ? <div className={`mt-3 rounded-md border p-3 text-xs ${result.ok ? "border-primary/40 text-primary" : "border-destructive/40 text-destructive"}`}>{result.message}</div> : null}
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">The browser sends only an authenticated intent. Order creation and execution decisions remain server-side.</p>
         </aside>
       </div>
       <PositionLifecyclePanel />
