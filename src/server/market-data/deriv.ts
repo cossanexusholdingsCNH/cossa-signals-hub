@@ -50,6 +50,7 @@ type DerivEnvelope = {
 };
 
 type PendingRequest<T = unknown> = {
+  socket: WebSocket;
   select: (message: DerivEnvelope) => T | undefined;
   resolve: (value: T) => void;
   reject: (error: unknown) => void;
@@ -93,16 +94,22 @@ function isTransientDerivError(error: unknown): error is DerivMarketDataError {
   );
 }
 
-function rejectPending(error: DerivMarketDataError) {
+function rejectPendingForSocket(socket: WebSocket, error: DerivMarketDataError) {
   for (const [requestId, pending] of pendingRequests) {
+    if (pending.socket !== socket) continue;
     clearTimeout(pending.timer);
-    pending.reject(error);
     pendingRequests.delete(requestId);
+    pending.reject(error);
   }
 }
 
 function detachSocket(socket: WebSocket) {
   if (sharedSocket === socket) sharedSocket = null;
+}
+
+function failSocket(socket: WebSocket, message: string) {
+  detachSocket(socket);
+  rejectPendingForSocket(socket, new DerivMarketDataError(message, "WS_CONNECTION_FAILED"));
 }
 
 function installSocketHandlers(socket: WebSocket) {
@@ -117,7 +124,7 @@ function installSocketHandlers(socket: WebSocket) {
     if (!Number.isInteger(message.req_id)) return;
     const requestId = message.req_id as number;
     const pending = pendingRequests.get(requestId);
-    if (!pending) return;
+    if (!pending || pending.socket !== socket) return;
 
     if (message.error) {
       clearTimeout(pending.timer);
@@ -144,21 +151,8 @@ function installSocketHandlers(socket: WebSocket) {
     }
   };
 
-  socket.onerror = () => {
-    detachSocket(socket);
-    rejectPending(
-      new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"),
-    );
-  };
-
-  socket.onclose = () => {
-    detachSocket(socket);
-    if (pendingRequests.size > 0) {
-      rejectPending(
-        new DerivMarketDataError("Deriv WebSocket connection closed", "WS_CONNECTION_FAILED"),
-      );
-    }
-  };
+  socket.onerror = () => failSocket(socket, "Deriv WebSocket connection failed");
+  socket.onclose = () => failSocket(socket, "Deriv WebSocket connection closed");
 }
 
 async function getSharedSocket(): Promise<WebSocket> {
@@ -167,16 +161,24 @@ async function getSharedSocket(): Promise<WebSocket> {
 
   connectingSocket = new Promise<WebSocket>((resolve, reject) => {
     const socket = new WebSocket(DERIV_PUBLIC_WS_URL);
+    let settled = false;
+    const finishReject = (error: DerivMarketDataError) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
     const connectionTimer = setTimeout(() => {
       try {
         socket.close();
       } catch {
         // Cleanup only.
       }
-      reject(new DerivMarketDataError("Deriv WebSocket connection timed out", "REQUEST_TIMEOUT"));
+      finishReject(new DerivMarketDataError("Deriv WebSocket connection timed out", "REQUEST_TIMEOUT"));
     }, 10_000);
 
     socket.onopen = () => {
+      if (settled) return;
+      settled = true;
       clearTimeout(connectionTimer);
       sharedSocket = socket;
       installSocketHandlers(socket);
@@ -185,7 +187,12 @@ async function getSharedSocket(): Promise<WebSocket> {
 
     socket.onerror = () => {
       clearTimeout(connectionTimer);
-      reject(new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"));
+      finishReject(new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"));
+    };
+
+    socket.onclose = () => {
+      clearTimeout(connectionTimer);
+      finishReject(new DerivMarketDataError("Deriv WebSocket connection closed", "WS_CONNECTION_FAILED"));
     };
   }).finally(() => {
     connectingSocket = null;
@@ -208,7 +215,7 @@ async function requestAttempt<T>(
       reject(new DerivMarketDataError("Deriv market-data request timed out", "REQUEST_TIMEOUT"));
     }, timeoutMs);
 
-    pendingRequests.set(requestId, { select, resolve, reject, timer } as PendingRequest);
+    pendingRequests.set(requestId, { socket, select, resolve, reject, timer } as PendingRequest);
 
     try {
       socket.send(JSON.stringify({ ...payload, req_id: requestId }));
