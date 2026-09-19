@@ -116,8 +116,8 @@ function TradingWorkspace() {
 
   const selectedAccount =
     (accounts.data ?? []).find((account) => account.id === accountId) ?? accounts.data?.[0];
-  const currentPrice =
-    liveTick.price ?? Number(instrument?.current_price ?? candles.data?.at(-1)?.close ?? 0) || null;
+  const fallbackPrice = Number(instrument?.current_price ?? candles.data?.at(-1)?.close ?? 0);
+  const currentPrice = liveTick.price ?? (Number.isFinite(fallbackPrice) && fallbackPrice > 0 ? fallbackPrice : null);
 
   function selectInstrument(nextSymbol: string) {
     setSymbol(nextSymbol);
