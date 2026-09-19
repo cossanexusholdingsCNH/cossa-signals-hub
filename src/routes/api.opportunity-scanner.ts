@@ -185,12 +185,11 @@ export const Route = createFileRoute("/api/opportunity-scanner")({
             .limit(1000);
           if (structureResult.error) throw structureResult.error;
 
-          const structureByKey = new Map<string, ScannerStructure>();
+          const structureByEvidenceWindow = new Map<string, ScannerStructure>();
           for (const raw of (structureResult.data ?? []) as unknown as StructureRow[]) {
-            const key = `${raw.instrument_id}:${raw.timeframe}`;
-            if (structureByKey.has(key)) continue;
+            const key = `${raw.instrument_id}:${raw.timeframe}:${raw.data_to}`;
             const structure = structureFromAnalysis(raw.analysis);
-            if (structure) structureByKey.set(key, structure);
+            if (structure) structureByEvidenceWindow.set(key, structure);
           }
 
           const latestByKey = new Map<string, EvidenceRow>();
@@ -203,7 +202,7 @@ export const Route = createFileRoute("/api/opportunity-scanner")({
           for (const row of latestByKey.values()) {
             const instrument = Array.isArray(row.instrument) ? row.instrument[0] : row.instrument;
             if (!instrument) continue;
-            const key = `${row.instrument_id}:${row.timeframe}`;
+            const structureKey = `${row.instrument_id}:${row.timeframe}:${row.data_to}`;
             evidence.push({
               id: row.id,
               instrumentId: row.instrument_id,
@@ -225,7 +224,7 @@ export const Route = createFileRoute("/api/opportunity-scanner")({
               dataTo: row.data_to,
               noTradeReasons: row.no_trade_reasons ?? [],
               reasons: row.reasons ?? [],
-              structure: structureByKey.get(key) ?? null,
+              structure: structureByEvidenceWindow.get(structureKey) ?? null,
             });
           }
 
