@@ -1,0 +1,71 @@
+name: Deriv Production Scheduler
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/deriv-production-scheduler.yml"
+
+concurrency:
+  group: deriv-production-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      DERIV_INGESTION_URL: ${{ vars.DERIV_INGESTION_URL }}
+    steps:
+      - name: Verify protected scheduler secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET is not configured for GitHub Actions." >&2
+            exit 1
+          fi
+
+      - name: Trigger protected production ingestion
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${DERIV_INGESTION_URL:-https://cossa-signals-hub.vercel.app/api/deriv-ingest}"
+          response_file="$(mktemp)"
+          http_code="$(curl \
+            --silent \
+            --show-error \
+            --location \
+            --retry 2 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 300 \
+            --output "${response_file}" \
+            --write-out "%{http_code}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${url}")"
+
+          if [ "${http_code}" -lt 200 ] || [ "${http_code}" -ge 300 ]; then
+            echo "Deriv ingestion returned HTTP ${http_code}." >&2
+            cat "${response_file}" >&2
+            exit 1
+          fi
+
+          jq -e '.ok == true and (.attempted | type == "number") and (.attempted > 0) and (.succeeded | type == "number") and (.succeeded > 0)' "${response_file}" >/dev/null
+          attempted="$(jq -r '.attempted' "${response_file}")"
+          succeeded="$(jq -r '.succeeded' "${response_file}")"
+          failed="$(jq -r '.failed' "${response_file}")"
+          concurrency="$(jq -r '.concurrency' "${response_file}")"
+
+          {
+            echo "### Deriv production ingestion"
+            echo "- Attempted: ${attempted}"
+            echo "- Succeeded: ${succeeded}"
+            echo "- Failed: ${failed}"
+            echo "- Concurrency: ${concurrency}"
+          } >> "${GITHUB_STEP_SUMMARY}"
