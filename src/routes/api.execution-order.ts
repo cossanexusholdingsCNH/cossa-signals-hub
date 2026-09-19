@@ -25,20 +25,23 @@ export const Route = createFileRoute("/api/execution-order")({
             { createManualOrderIntent },
             { evaluatePaperExecution },
             { fillApprovedDemoOrder },
+            { refreshDemoRiskState },
           ] = await Promise.all([
             import("@/integrations/supabase/client.server"),
             import("@/server/execution/manual-order.server"),
             import("@/server/execution/paper-coordinator.server"),
             import("@/server/execution/execution-lifecycle.server"),
+            import("@/server/execution/demo-account.server"),
           ]);
 
           const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
           if (authError || !auth.user) return json({ ok: false, error: "Invalid session" }, 401);
 
           const body = (await request.json()) as Record<string, unknown>;
+          const tradingAccountId = String(body.tradingAccountId ?? "");
           const order = await createManualOrderIntent({
             userId: auth.user.id,
-            tradingAccountId: String(body.tradingAccountId ?? ""),
+            tradingAccountId,
             instrumentId: String(body.instrumentId ?? ""),
             side: body.side === "sell" ? "sell" : "buy",
             requestedAmount: Number(body.requestedAmount),
@@ -50,6 +53,7 @@ export const Route = createFileRoute("/api/execution-order")({
           });
 
           if (order.execution_mode === "paper_auto") {
+            await refreshDemoRiskState(tradingAccountId, auth.user.id);
             const decision = await evaluatePaperExecution({
               orderId: order.id,
               userId: auth.user.id,
