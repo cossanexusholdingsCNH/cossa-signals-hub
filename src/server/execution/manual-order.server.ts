@@ -40,31 +40,58 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
 
   let signalEvidence: {
     confidence: number;
+    dataConfidence: number;
     generatedAt: string;
     direction: string;
+    timeframe: string;
   } | null = null;
 
   if (input.signalId) {
     const { data: signal, error: signalError } = await supabaseAdmin
       .from("signals")
-      .select("id,instrument_id,direction,confidence_score,data_timestamp,calculated_at,created_at")
+      .select(
+        "id,instrument_id,direction,timeframe,confidence_score,data_confidence_score,data_timestamp,calculated_at,created_at",
+      )
       .eq("id", input.signalId)
       .eq("instrument_id", input.instrumentId)
       .single();
     if (signalError || !signal) throw new Error("Selected signal was not found for this instrument");
 
+    const latestEvidence = await supabaseAdmin
+      .from("signal_evidence")
+      .select("data_confidence_score,generated_at,timeframe")
+      .eq("instrument_id", input.instrumentId)
+      .eq("timeframe", signal.timeframe)
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestEvidence.error) {
+      throw new Error(`Unable to verify signal data confidence: ${latestEvidence.error.message}`);
+    }
+
     const confidence = Number(signal.confidence_score ?? 0);
-    const generatedAt = signal.data_timestamp ?? signal.calculated_at ?? signal.created_at;
+    const dataConfidence = Number(
+      signal.data_confidence_score ?? latestEvidence.data?.data_confidence_score ?? 0,
+    );
+    const generatedAt =
+      latestEvidence.data?.generated_at ??
+      signal.data_timestamp ??
+      signal.calculated_at ??
+      signal.created_at;
     signalEvidence = {
       confidence,
+      dataConfidence,
       generatedAt,
       direction: String(signal.direction),
+      timeframe: String(signal.timeframe),
     };
   }
 
   const isDemo = account.account_environment === "demo";
   if (isDemo && !signalEvidence) {
-    throw new Error("Demo auto execution requires a current Cossa signal so risk checks can verify confidence and freshness");
+    throw new Error(
+      "Demo auto execution requires a current Cossa signal so risk checks can verify confidence, data quality and freshness",
+    );
   }
 
   const executionMode = isDemo ? "paper_auto" : "live_manual";
@@ -96,8 +123,10 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
         provider: account.provider,
         manual_ticket: true,
         confidence: signalEvidence?.confidence ?? null,
+        data_confidence: signalEvidence?.dataConfidence ?? null,
         generated_at: signalEvidence?.generatedAt ?? null,
         signal_direction: signalEvidence?.direction ?? null,
+        timeframe: signalEvidence?.timeframe ?? null,
       },
     })
     .select("id,status,execution_mode,confirmation_required,created_at")
@@ -115,6 +144,7 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
       account_environment: account.account_environment,
       confirmation_required: confirmationRequired,
       signal_confidence: signalEvidence?.confidence ?? null,
+      data_confidence: signalEvidence?.dataConfidence ?? null,
       signal_generated_at: signalEvidence?.generatedAt ?? null,
     },
   });
