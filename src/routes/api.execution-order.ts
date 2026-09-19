@@ -65,6 +65,8 @@ export const Route = createFileRoute("/api/execution-order")({
             stopLoss: Number(body.stopLoss),
             takeProfit1: Number(body.takeProfit1),
             signalId: typeof body.signalId === "string" ? body.signalId : null,
+            signalEvidenceId:
+              typeof body.signalEvidenceId === "string" ? body.signalEvidenceId : null,
             riskPct: body.riskPct == null ? null : Number(body.riskPct),
           });
 
