@@ -23,17 +23,13 @@ export function InstrumentTable({
 
   return (
     <>
-      {/* Desktop */}
       <div className="hidden overflow-x-auto lg:block">
-        <table className="w-full min-w-[900px] text-xs">
+        <table className="w-full min-w-[980px] text-xs">
           <thead>
             <tr className="border-b border-border text-left">
-              {["Instrument", "Category", "Price", "Data", "Risk", "Validation", "Provider", "Default TF", "Market"].map(
+              {["Instrument", "Category", "Price", "Data", "Risk", "Validation", "Provider", "Default TF", "Market", "Chart"].map(
                 (h) => (
-                  <th
-                    key={h}
-                    className="px-3 py-2.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase"
-                  >
+                  <th key={h} className="px-3 py-2.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
                     {h}
                   </th>
                 ),
@@ -45,52 +41,47 @@ export function InstrumentTable({
               <tr key={i.id} className="border-b border-border/50 last:border-0 hover:bg-card/60">
                 <td className="px-3 py-2.5">
                   <Link
-                    to="/instruments/$symbol"
-                    params={{ symbol: i.symbol }}
+                    to="/trading"
+                    search={{ symbol: i.symbol, timeframe: i.timeframe_default }}
                     className="numeric font-semibold hover:text-primary"
                   >
                     {i.symbol}
                   </Link>
                   <span className="ml-2 text-muted-foreground">{i.display_name}</span>
-                  {i.is_demo ? (
-                    <span className="ml-2">
-                      <DemoBadge />
-                    </span>
-                  ) : null}
+                  {i.is_demo ? <span className="ml-2"><DemoBadge /></span> : null}
                 </td>
-                <td className="px-3 py-2.5 text-muted-foreground">
-                  {CATEGORY_LABEL[i.category] ?? i.category}
-                </td>
+                <td className="px-3 py-2.5 text-muted-foreground">{CATEGORY_LABEL[i.category] ?? i.category}</td>
                 <td className="numeric px-3 py-2.5">{formatPrice(i.current_price)}</td>
                 <td className="px-3 py-2.5">
-                  <FreshnessBadge
-                    timestamp={i.last_data_at}
-                    {...(staleSeconds ? { staleSeconds } : {})}
-                  />
+                  <FreshnessBadge timestamp={i.last_data_at} {...(staleSeconds ? { staleSeconds } : {})} />
                 </td>
-                <td className="px-3 py-2.5">
-                  <RiskBadge rating={i.risk_rating} />
-                </td>
-                <td className="px-3 py-2.5">
-                  <ValidationBadge status={i.validation_status} />
-                </td>
+                <td className="px-3 py-2.5"><RiskBadge rating={i.risk_rating} /></td>
+                <td className="px-3 py-2.5"><ValidationBadge status={i.validation_status} /></td>
                 <td className="px-3 py-2.5 text-muted-foreground">{i.provider}</td>
                 <td className="numeric px-3 py-2.5 text-muted-foreground">{i.timeframe_default}</td>
                 <td className="px-3 py-2.5 text-muted-foreground">{i.market_status}</td>
+                <td className="px-3 py-2.5">
+                  <Link
+                    to="/trading"
+                    search={{ symbol: i.symbol, timeframe: i.timeframe_default }}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Open chart →
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Mobile */}
       <ul className="divide-y divide-border/60 lg:hidden">
         {instruments.map((i) => (
           <li key={i.id} className="px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <Link
-                to="/instruments/$symbol"
-                params={{ symbol: i.symbol }}
+                to="/trading"
+                search={{ symbol: i.symbol, timeframe: i.timeframe_default }}
                 className="numeric text-sm font-semibold hover:text-primary"
               >
                 {i.symbol}
@@ -101,11 +92,15 @@ export function InstrumentTable({
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <RiskBadge rating={i.risk_rating} />
               <ValidationBadge status={i.validation_status} />
-              <FreshnessBadge
-                timestamp={i.last_data_at}
-                {...(staleSeconds ? { staleSeconds } : {})}
-              />
+              <FreshnessBadge timestamp={i.last_data_at} {...(staleSeconds ? { staleSeconds } : {})} />
               {i.is_demo ? <DemoBadge /> : null}
+              <Link
+                to="/trading"
+                search={{ symbol: i.symbol, timeframe: i.timeframe_default }}
+                className="ml-auto text-xs font-medium text-primary"
+              >
+                Open chart →
+              </Link>
             </div>
           </li>
         ))}
