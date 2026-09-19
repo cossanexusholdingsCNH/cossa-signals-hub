@@ -4,6 +4,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  CandlestickChart,
   Grid3x3,
   LayoutDashboard,
   LineChart,
@@ -24,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 const NAV = [
   { to: "/dashboard", label: "Command Center", icon: LayoutDashboard },
+  { to: "/trading", label: "Trading Terminal", icon: CandlestickChart },
   { to: "/matrix", label: "Smart Matrix", icon: Grid3x3 },
   { to: "/signals", label: "Signals", icon: Radio },
   { to: "/performance", label: "Performance", icon: BarChart3 },
