@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 
+import { analyzeMarketStructure } from "@/lib/market-structure";
+
 export type CandlePoint = {
   openTime: string;
   closeTime: string;
@@ -95,6 +97,17 @@ export function MarketExecutionChart({
   const [showEma20, setShowEma20] = useState(true);
   const [showEma50, setShowEma50] = useState(false);
   const [showSma20, setShowSma20] = useState(false);
+  const [showStructure, setShowStructure] = useState(true);
+
+  const closedStructureInput = useMemo(() => data.slice(-100), [data]);
+  const structure = useMemo(() => {
+    if (closedStructureInput.length < 20) return null;
+    try {
+      return analyzeMarketStructure(closedStructureInput);
+    } catch {
+      return null;
+    }
+  }, [closedStructureInput]);
 
   const chartData = useMemo(() => {
     const rows = data.slice(-100).map((row) => ({ ...row }));
@@ -138,6 +151,10 @@ export function MarketExecutionChart({
     for (const extra of [entryPrice, stopLoss, takeProfit1, currentPrice]) {
       if (extra != null && Number.isFinite(extra)) values.push(extra);
     }
+    if (showStructure && structure) {
+      values.push(...structure.supportLevels, ...structure.resistanceLevels);
+      values.push(...structure.liquidityReferences.map((reference) => reference.price));
+    }
     if (!values.length) return { min: 0, max: 1 };
     let min = Math.min(...values);
     let max = Math.max(...values);
@@ -145,7 +162,7 @@ export function MarketExecutionChart({
     min -= span * 0.08;
     max += span * 0.08;
     return { min, max };
-  }, [chartData, currentPrice, entryPrice, stopLoss, takeProfit1]);
+  }, [chartData, currentPrice, entryPrice, showStructure, stopLoss, structure, takeProfit1]);
 
   const x = (index: number) =>
     pad.left + (chartData.length <= 1 ? plotWidth / 2 : (index / (chartData.length - 1)) * plotWidth);
@@ -169,6 +186,35 @@ export function MarketExecutionChart({
       <g className="text-primary/70">
         <line x1={pad.left} x2={width - pad.right} y1={levelY} y2={levelY} stroke="currentColor" strokeDasharray="6 5" />
         <text x={width - pad.right - 4} y={levelY - 5} textAnchor="end" fill="currentColor" fontSize="11">
+          {label} {formatPrice(value)}
+        </text>
+      </g>
+    );
+  };
+
+  const renderStructureLevel = (
+    value: number,
+    label: string,
+    kind: "support" | "resistance" | "reference",
+  ) => {
+    const levelY = y(value);
+    const className =
+      kind === "support"
+        ? "text-primary/45"
+        : kind === "resistance"
+          ? "text-destructive/45"
+          : "text-muted-foreground/45";
+    return (
+      <g key={`${kind}-${label}-${value}`} className={className}>
+        <line
+          x1={pad.left}
+          x2={width - pad.right}
+          y1={levelY}
+          y2={levelY}
+          stroke="currentColor"
+          strokeDasharray={kind === "reference" ? "2 4" : "8 5"}
+        />
+        <text x={pad.left + 5} y={levelY - 4} fill="currentColor" fontSize="10">
           {label} {formatPrice(value)}
         </text>
       </g>
@@ -205,8 +251,20 @@ export function MarketExecutionChart({
         <button type="button" onClick={() => setShowEma20((value) => !value)} className={`rounded-md border px-3 py-1.5 text-xs ${showEma20 ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>EMA 20</button>
         <button type="button" onClick={() => setShowEma50((value) => !value)} className={`rounded-md border px-3 py-1.5 text-xs ${showEma50 ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>EMA 50</button>
         <button type="button" onClick={() => setShowSma20((value) => !value)} className={`rounded-md border px-3 py-1.5 text-xs ${showSma20 ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>SMA 20</button>
+        <button type="button" onClick={() => setShowStructure((value) => !value)} className={`rounded-md border px-3 py-1.5 text-xs ${showStructure ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>Structure</button>
         <span className="ml-auto text-xs text-muted-foreground">RSI 14: <strong className="text-foreground">{currentRsi == null ? "—" : currentRsi.toFixed(1)}</strong> · ATR 14: <strong className="text-foreground">{currentAtr == null ? "—" : formatPrice(currentAtr)}</strong> · Move: <strong className={movement >= 0 ? "text-primary" : "text-destructive"}>{movement >= 0 ? "+" : ""}{formatPrice(movement)}</strong></span>
       </div>
+
+      {showStructure && structure ? (
+        <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 rounded-md border border-border/70 px-3 py-2 text-[11px] text-muted-foreground">
+          <span>Structure: <strong className="text-foreground">{structure.trend.toUpperCase()} · {structure.structureLabel}</strong></span>
+          <span>Breakout: <strong className="text-foreground">{structure.breakout.toUpperCase()}</strong></span>
+          <span>Support: <strong className="text-foreground">{formatPrice(structure.nearestSupport)}</strong></span>
+          <span>Resistance: <strong className="text-foreground">{formatPrice(structure.nearestResistance)}</strong></span>
+          <span>Equal-level refs: <strong className="text-foreground">{structure.liquidityReferences.length}</strong></span>
+          <span className="w-full">Confirmed structure uses closed candles only. Equal-level references are price-action zones, not verified order-book liquidity.</span>
+        </div>
+      ) : null}
 
       <div className="w-full overflow-hidden rounded-lg border border-border/70 bg-background">
         <svg viewBox={`0 0 ${width} ${height}`} className="block h-[430px] w-full" preserveAspectRatio="none" role="img" aria-label={`${symbol} ${mode} chart`}>
@@ -220,6 +278,20 @@ export function MarketExecutionChart({
               </g>
             );
           })}
+
+          {showStructure && structure ? (
+            <>
+              {structure.supportLevels.slice(0, 2).map((value, index) => renderStructureLevel(value, `S${index + 1}`, "support"))}
+              {structure.resistanceLevels.slice(0, 2).map((value, index) => renderStructureLevel(value, `R${index + 1}`, "resistance"))}
+              {structure.liquidityReferences.slice(0, 3).map((reference) =>
+                renderStructureLevel(
+                  reference.price,
+                  reference.kind === "equal_highs" ? `EQH×${reference.touches}` : `EQL×${reference.touches}`,
+                  "reference",
+                ),
+              )}
+            </>
+          ) : null}
 
           {mode === "candles" ? chartData.map((candle, index) => {
             const up = candle.close >= candle.open;
@@ -240,6 +312,17 @@ export function MarketExecutionChart({
           {showEma20 ? <path d={linePath(ema20)} fill="none" stroke="currentColor" strokeWidth="1.4" className="text-foreground/80" /> : null}
           {showEma50 ? <path d={linePath(ema50)} fill="none" stroke="currentColor" strokeWidth="1.4" strokeDasharray="5 4" className="text-muted-foreground" /> : null}
           {showSma20 ? <path d={linePath(sma20)} fill="none" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 3" className="text-primary/60" /> : null}
+
+          {showStructure && structure ? (
+            <>
+              {structure.swingHighs.slice(-6).map((point) => (
+                <circle key={`swing-high-${point.index}-${point.price}`} cx={x(point.index)} cy={y(point.price)} r="3" className="fill-destructive/70" />
+              ))}
+              {structure.swingLows.slice(-6).map((point) => (
+                <circle key={`swing-low-${point.index}-${point.price}`} cx={x(point.index)} cy={y(point.price)} r="3" className="fill-primary/70" />
+              ))}
+            </>
+          ) : null}
 
           {renderLevel(entryPrice, "Entry")}
           {renderLevel(stopLoss, "SL")}
