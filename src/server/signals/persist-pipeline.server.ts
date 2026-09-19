@@ -17,6 +17,19 @@ type PersistResult = {
   evidence: SignalEvidence;
 };
 
+type StructureSnapshotWriteResult = {
+  error: { message: string } | null;
+};
+
+type StructureSnapshotWriter = {
+  from(table: "market_structure_snapshots"): {
+    upsert(
+      values: Record<string, unknown>,
+      options: { onConflict: string; ignoreDuplicates: boolean },
+    ): PromiseLike<StructureSnapshotWriteResult>;
+  };
+};
+
 function asIso(value: Date) {
   return value.toISOString();
 }
@@ -53,7 +66,10 @@ async function persistCandles(
 
 async function persistMarketStructure(evidence: SignalEvidence) {
   const structure = evidence.marketStructure;
-  const { error } = await supabaseAdmin.from("market_structure_snapshots").upsert(
+  // The production schema migration is part of this change. Use a narrow server-only
+  // writer contract until generated Supabase types are refreshed from that schema.
+  const structureWriter = supabaseAdmin as unknown as StructureSnapshotWriter;
+  const { error } = await structureWriter.from("market_structure_snapshots").upsert(
     {
       instrument_id: evidence.instrumentId,
       provider_id: evidence.providerId,
