@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/market-stream-config")({
           if (!data) return json({ ok: true, stream: null });
 
           const provider = data.market_data_providers as unknown as {
-            slug?: string | null;
+            slug?: string;
             supports_streaming?: boolean;
           };
 
