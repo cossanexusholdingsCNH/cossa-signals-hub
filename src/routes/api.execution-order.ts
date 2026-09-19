@@ -25,20 +25,39 @@ export const Route = createFileRoute("/api/execution-order")({
             { createManualOrderIntent },
             { evaluatePaperExecution },
             { fillApprovedDemoOrder },
+            { refreshDemoRiskState },
           ] = await Promise.all([
             import("@/integrations/supabase/client.server"),
             import("@/server/execution/manual-order.server"),
             import("@/server/execution/paper-coordinator.server"),
             import("@/server/execution/execution-lifecycle.server"),
+            import("@/server/execution/demo-account.server"),
           ]);
 
           const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
           if (authError || !auth.user) return json({ ok: false, error: "Invalid session" }, 401);
 
           const body = (await request.json()) as Record<string, unknown>;
+          const tradingAccountId = String(body.tradingAccountId ?? "");
+          if (!tradingAccountId)
+            return json({ ok: false, error: "Trading account is required" }, 400);
+
+          const account = await supabaseAdmin
+            .from("trading_accounts")
+            .select("id,account_environment")
+            .eq("id", tradingAccountId)
+            .eq("user_id", auth.user.id)
+            .single();
+          if (account.error || !account.data)
+            return json({ ok: false, error: "Trading account was not found" }, 404);
+
+          if (account.data.account_environment === "demo") {
+            await refreshDemoRiskState(tradingAccountId, auth.user.id);
+          }
+
           const order = await createManualOrderIntent({
             userId: auth.user.id,
-            tradingAccountId: String(body.tradingAccountId ?? ""),
+            tradingAccountId,
             instrumentId: String(body.instrumentId ?? ""),
             side: body.side === "sell" ? "sell" : "buy",
             requestedAmount: Number(body.requestedAmount),

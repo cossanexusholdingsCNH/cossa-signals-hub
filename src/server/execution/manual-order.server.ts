@@ -38,7 +38,35 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
   if (!account.enabled) throw new Error("Trading account is disabled");
   if (account.emergency_stop) throw new Error("Trading account emergency stop is active");
 
+  let signalEvidence: {
+    confidence: number;
+    generatedAt: string;
+    direction: string;
+  } | null = null;
+
+  if (input.signalId) {
+    const { data: signal, error: signalError } = await supabaseAdmin
+      .from("signals")
+      .select("id,instrument_id,direction,confidence_score,data_timestamp,calculated_at,created_at")
+      .eq("id", input.signalId)
+      .eq("instrument_id", input.instrumentId)
+      .single();
+    if (signalError || !signal) throw new Error("Selected signal was not found for this instrument");
+
+    const confidence = Number(signal.confidence_score ?? 0);
+    const generatedAt = signal.data_timestamp ?? signal.calculated_at ?? signal.created_at;
+    signalEvidence = {
+      confidence,
+      generatedAt,
+      direction: String(signal.direction),
+    };
+  }
+
   const isDemo = account.account_environment === "demo";
+  if (isDemo && !signalEvidence) {
+    throw new Error("Demo auto execution requires a current Cossa signal so risk checks can verify confidence and freshness");
+  }
+
   const executionMode = isDemo ? "paper_auto" : "live_manual";
   const confirmationRequired = !isDemo;
   const status = isDemo ? "approved" : "awaiting_confirmation";
@@ -67,6 +95,9 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
         account_environment: account.account_environment,
         provider: account.provider,
         manual_ticket: true,
+        confidence: signalEvidence?.confidence ?? null,
+        generated_at: signalEvidence?.generatedAt ?? null,
+        signal_direction: signalEvidence?.direction ?? null,
       },
     })
     .select("id,status,execution_mode,confirmation_required,created_at")
@@ -83,6 +114,8 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
       source: "cossa_trading_terminal",
       account_environment: account.account_environment,
       confirmation_required: confirmationRequired,
+      signal_confidence: signalEvidence?.confidence ?? null,
+      signal_generated_at: signalEvidence?.generatedAt ?? null,
     },
   });
   if (eventError) throw new Error(`Unable to persist execution event: ${eventError.message}`);
