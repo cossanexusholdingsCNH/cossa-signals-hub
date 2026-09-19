@@ -159,10 +159,48 @@ function TradingWorkspace() {
   );
 
   const candles = useQuery({
-    queryKey: ["market_candles", instrument?.id, selectedTimeframe],
+    queryKey: ["trading_candles_live", instrument?.id, selectedTimeframe],
     enabled: Boolean(instrument?.id),
     refetchInterval: 15_000,
+    staleTime: 8_000,
     queryFn: async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Authentication required for trading candles");
+
+      try {
+        const response = await fetch(
+          `/api/trading-candles?instrumentId=${encodeURIComponent(instrument!.id)}&timeframe=${encodeURIComponent(selectedTimeframe)}`,
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+          candles?: Array<{
+            openTime: string;
+            closeTime: string;
+            open: number;
+            high: number;
+            low: number;
+            close: number;
+          }>;
+        };
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error ?? "Unable to load live Deriv candles");
+        }
+        if ((payload.candles ?? []).length > 0) {
+          return payload.candles!.map((row) => ({
+            ...row,
+            label: new Date(row.openTime).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          }));
+        }
+      } catch (liveError) {
+        console.warn("Live Deriv candle history unavailable; using stored fallback", liveError);
+      }
+
       const { data, error } = await supabase
         .from("market_candles")
         .select("open_time,close_time,open,high,low,close")
@@ -170,7 +208,7 @@ function TradingWorkspace() {
         .eq("timeframe", selectedTimeframe)
         .eq("is_closed", true)
         .order("open_time", { ascending: false })
-        .limit(180);
+        .limit(220);
       if (error) throw error;
       return (data ?? []).reverse().map((row) => ({
         openTime: row.open_time,
@@ -467,8 +505,10 @@ function TradingWorkspace() {
           {streamConfig.data?.provider === "deriv" && liveTick.error ? (
             <div className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">Live Deriv stream: {liveTick.error}</div>
           ) : null}
-          {candles.isFetched && (candles.data ?? []).length === 0 ? (
-            <div className="rounded-md border border-border p-2 text-xs text-muted-foreground">No stored {selectedTimeframe} OHLC candles are available for {selectedSymbol || "this instrument"}. Choose another available timeframe.</div>
+          {candles.isError ? (
+            <div className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">Candle history: {candles.error instanceof Error ? candles.error.message : "Unable to load this timeframe"}</div>
+          ) : candles.isFetched && (candles.data ?? []).length === 0 ? (
+            <div className="rounded-md border border-caution/40 p-2 text-xs text-caution">No verified {selectedTimeframe} candle history is currently available for {selectedSymbol || "this instrument"}. The terminal will retry automatically.</div>
           ) : null}
 
           {layoutMode !== "focus" ? analysis : null}
