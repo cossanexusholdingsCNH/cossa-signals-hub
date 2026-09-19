@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import {
   rankOpportunities,
+  validateScannerSettings,
   type ScannerEvidence,
   type ScannerSettings,
   type ScannerStructure,
@@ -73,6 +74,15 @@ type StructureRow = {
   analysis: unknown;
 };
 
+type ScannerControlUpdateResult = { error: { message: string } | null };
+type ScannerControlsWriter = {
+  from(table: "platform_controls"): {
+    update(values: Record<string, number>): {
+      eq(column: "id", value: string): PromiseLike<ScannerControlUpdateResult>;
+    };
+  };
+};
+
 function settingsFromControls(row: ControlsRow): ScannerSettings {
   return {
     minSignalConfidence: Number(row.scanner_min_signal_confidence),
@@ -86,6 +96,20 @@ function settingsFromControls(row: ControlsRow): ScannerSettings {
       structure: Number(row.scanner_weight_structure),
       regime: Number(row.scanner_weight_regime),
     },
+  };
+}
+
+function controlsPatch(settings: ScannerSettings) {
+  return {
+    scanner_min_signal_confidence: settings.minSignalConfidence,
+    scanner_min_data_confidence: settings.minDataConfidence,
+    scanner_min_risk_reward: settings.minRiskReward,
+    scanner_max_candidate_age_minutes: settings.maxCandidateAgeMinutes,
+    scanner_weight_signal: settings.weights.signal,
+    scanner_weight_data: settings.weights.data,
+    scanner_weight_risk_reward: settings.weights.riskReward,
+    scanner_weight_structure: settings.weights.structure,
+    scanner_weight_regime: settings.weights.regime,
   };
 }
 
@@ -114,20 +138,25 @@ function structureFromAnalysis(value: unknown): ScannerStructure | null {
   };
 }
 
+async function authenticate(request: Request) {
+  const token = bearerToken(request);
+  if (!token) return { error: json({ ok: false, error: "Authentication required" }, 401) };
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
+  if (authError || !auth.user)
+    return { error: json({ ok: false, error: "Invalid or expired session" }, 401) };
+  return { supabaseAdmin, user: auth.user };
+}
+
 export const Route = createFileRoute("/api/opportunity-scanner")({
   server: {
     handlers: {
       GET: async ({ request }) => {
         try {
-          const token = bearerToken(request);
-          if (!token) return json({ ok: false, error: "Authentication required" }, 401);
+          const auth = await authenticate(request);
+          if ("error" in auth) return auth.error;
 
-          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-          const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
-          if (authError || !auth.user)
-            return json({ ok: false, error: "Invalid or expired session" }, 401);
-
-          const controlsResult = await supabaseAdmin
+          const controlsResult = await auth.supabaseAdmin
             .from("platform_controls")
             .select(
               "scanner_min_signal_confidence,scanner_min_data_confidence,scanner_min_risk_reward,scanner_max_candidate_age_minutes,scanner_weight_signal,scanner_weight_data,scanner_weight_risk_reward,scanner_weight_structure,scanner_weight_regime",
@@ -140,7 +169,7 @@ export const Route = createFileRoute("/api/opportunity-scanner")({
           }
           const settings = settingsFromControls(controlsResult.data as unknown as ControlsRow);
 
-          const evidenceResult = await supabaseAdmin
+          const evidenceResult = await auth.supabaseAdmin
             .from("signal_evidence")
             .select(
               "id,instrument_id,provider_symbol,timeframe,direction,regime,confidence_score,data_confidence_score,risk_reward_ratio,entry,stop_loss,take_profit_1,generated_at,data_to,no_trade_reasons,reasons,instrument:instruments(id,symbol,display_name,asset_class,category)",
@@ -149,7 +178,7 @@ export const Route = createFileRoute("/api/opportunity-scanner")({
             .limit(1000);
           if (evidenceResult.error) throw evidenceResult.error;
 
-          const structureResult = await supabaseAdmin
+          const structureResult = await auth.supabaseAdmin
             .from("market_structure_snapshots")
             .select("instrument_id,timeframe,data_to,analysis")
             .order("data_to", { ascending: false })
@@ -213,6 +242,48 @@ export const Route = createFileRoute("/api/opportunity-scanner")({
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Opportunity scanner failed";
+          return json({ ok: false, error: message }, 400);
+        }
+      },
+      POST: async ({ request }) => {
+        try {
+          const auth = await authenticate(request);
+          if ("error" in auth) return auth.error;
+
+          const role = await auth.supabaseAdmin
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .in("role", ["super_admin", "admin"])
+            .limit(1)
+            .maybeSingle();
+          if (role.error) throw role.error;
+          if (!role.data) return json({ ok: false, error: "Administrator role required" }, 403);
+
+          const body = (await request.json()) as { settings?: ScannerSettings };
+          if (!body.settings) return json({ ok: false, error: "Scanner settings are required" }, 400);
+          validateScannerSettings(body.settings);
+
+          const controls = await auth.supabaseAdmin
+            .from("platform_controls")
+            .select("id")
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .single();
+          if (controls.error || !controls.data?.id)
+            throw new Error(`Platform controls unavailable: ${controls.error?.message ?? "missing row"}`);
+
+          const writer = auth.supabaseAdmin as unknown as ScannerControlsWriter;
+          const updateResult = await writer
+            .from("platform_controls")
+            .update(controlsPatch(body.settings))
+            .eq("id", controls.data.id);
+          if (updateResult.error)
+            throw new Error(`Unable to update scanner controls: ${updateResult.error.message}`);
+
+          return json({ ok: true, settings: body.settings });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update scanner controls";
           return json({ ok: false, error: message }, 400);
         }
       },
