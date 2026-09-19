@@ -55,9 +55,11 @@ export async function evaluatePaperExecution(
   if (controlsResult.error || !controlsResult.data) {
     throw new Error("Missing platform data-confidence controls; execution fails closed");
   }
-  const minimumDataConfidence = request.minimumDataConfidence ??
+  const minimumDataConfidence =
+    request.minimumDataConfidence ??
     requirePercentage(controlsResult.data.minimum_data_confidence, "minimum data confidence");
-  const maximumMarketDataAgeMs = request.maximumMarketDataAgeMs ??
+  const maximumMarketDataAgeMs =
+    request.maximumMarketDataAgeMs ??
     requireFinitePositive(controlsResult.data.stale_threshold_seconds, "stale threshold") * 1000;
 
   const orderResult = await supabaseAdmin
@@ -135,7 +137,10 @@ export async function evaluatePaperExecution(
       ? order.metadata
       : {};
   const confidence = requirePercentage(metadata["confidence"] ?? 0, "signal confidence");
-  const dataConfidence = requirePercentage(metadata["data_confidence"] ?? 0, "data confidence");
+  const dataConfidence = requirePercentage(
+    metadata["data_confidence"] ?? 0,
+    "data confidence",
+  );
   const marketGeneratedAt = metadata["generated_at"] ?? metadata["signal_generated_at"];
   const marketDataAgeMs =
     typeof marketGeneratedAt === "string"
