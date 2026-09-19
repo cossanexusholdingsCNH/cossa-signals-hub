@@ -7,6 +7,7 @@ import {
 } from "./deriv-signal-pipeline";
 
 const ENGINE_VERSION = "deterministic-v1";
+const STRUCTURE_ENGINE_VERSION = "structure-v1";
 
 type PersistResult = {
   evidenceId: string;
@@ -14,6 +15,19 @@ type PersistResult = {
   paperOrderId: string | null;
   duplicate: boolean;
   evidence: SignalEvidence;
+};
+
+type StructureSnapshotWriteResult = {
+  error: { message: string } | null;
+};
+
+type StructureSnapshotWriter = {
+  from(table: "market_structure_snapshots"): {
+    upsert(
+      values: Record<string, unknown>,
+      options: { onConflict: string; ignoreDuplicates: boolean },
+    ): PromiseLike<StructureSnapshotWriteResult>;
+  };
 };
 
 function asIso(value: Date) {
@@ -48,6 +62,37 @@ async function persistCandles(
     ignoreDuplicates: true,
   });
   if (error) throw new Error(`Unable to persist market candles: ${error.message}`);
+}
+
+async function persistMarketStructure(evidence: SignalEvidence) {
+  const structure = evidence.marketStructure;
+  // The production schema migration is part of this change. Use a narrow server-only
+  // writer contract until generated Supabase types are refreshed from that schema.
+  const structureWriter = supabaseAdmin as unknown as StructureSnapshotWriter;
+  const { error } = await structureWriter.from("market_structure_snapshots").upsert(
+    {
+      instrument_id: evidence.instrumentId,
+      provider_id: evidence.providerId,
+      provider_symbol: evidence.providerSymbol,
+      timeframe: evidence.timeframe,
+      data_from: evidence.dataFrom,
+      data_to: evidence.dataTo,
+      candle_count: evidence.candleCount,
+      engine_version: STRUCTURE_ENGINE_VERSION,
+      trend: structure.trend,
+      structure_label: structure.structureLabel,
+      breakout: structure.breakout,
+      current_price: structure.currentPrice,
+      atr: structure.atr,
+      analysis: structure,
+      generated_at: evidence.generatedAt,
+    },
+    {
+      onConflict: "instrument_id,provider_id,timeframe,data_to,engine_version",
+      ignoreDuplicates: true,
+    },
+  );
+  if (error) throw new Error(`Unable to persist market structure snapshot: ${error.message}`);
 }
 
 async function persistEvidence(
@@ -125,6 +170,7 @@ async function persistEngineRun(evidence: SignalEvidence, signalId: string | nul
         indicators: evidence.plan.indicators,
         reasons: evidence.plan.reasons,
         data_confidence: evidence.dataConfidence,
+        market_structure: evidence.marketStructure,
       },
       finished_at: evidence.generatedAt,
     })
@@ -190,6 +236,9 @@ async function createPaperOrder(
         confidence: candidate.confidence,
         data_confidence: candidate.dataConfidence,
         data_confidence_version: evidence.dataConfidence.version,
+        market_structure_version: evidence.marketStructure.version,
+        market_structure_trend: evidence.marketStructure.trend,
+        market_structure_breakout: evidence.marketStructure.breakout,
         signal_generated_at: evidence.generatedAt,
         market_data_from: evidence.dataFrom,
         market_data_to: evidence.dataTo,
@@ -209,6 +258,7 @@ export async function runAndPersistDerivSignal(
 ): Promise<PersistResult> {
   const result = await runDerivSignalPipeline(input);
   await persistCandles(result.candles);
+  await persistMarketStructure(result.evidence);
 
   const storedEvidence = await persistEvidence(result.evidence);
   if (storedEvidence.duplicate) {
