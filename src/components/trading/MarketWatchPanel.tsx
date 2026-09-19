@@ -115,24 +115,27 @@ export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSel
                 selected ? "bg-primary/10" : "hover:bg-muted/40",
               )}
             >
-              <button type="button" onClick={() => onSelect(market.symbol)} className="min-w-0 text-left">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    aria-label={`Favorite ${market.symbol}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleFavorite(market.symbol);
-                    }}
-                    className={cn("shrink-0 text-muted-foreground hover:text-primary", favorites.includes(market.symbol) && "text-primary")}
-                  >
-                    <Star className={cn("size-3", favorites.includes(market.symbol) && "fill-current")} />
-                  </button>
-                  <span className="truncate font-semibold">{market.symbol}</span>
-                  <span className="size-1.5 shrink-0 rounded-full bg-primary" title="Live mapping" />
-                </div>
-                <div className="ml-[18px] truncate text-[10px] text-muted-foreground">{market.displayName}</div>
-              </button>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label={`Favorite ${market.symbol}`}
+                  title={`Favorite ${market.symbol}`}
+                  onClick={() => toggleFavorite(market.symbol)}
+                  className={cn(
+                    "shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary",
+                    favorites.includes(market.symbol) && "text-primary",
+                  )}
+                >
+                  <Star className={cn("size-3", favorites.includes(market.symbol) && "fill-current")} />
+                </button>
+                <button type="button" onClick={() => onSelect(market.symbol)} className="min-w-0 flex-1 text-left">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-semibold">{market.symbol}</span>
+                    <span className="size-1.5 shrink-0 rounded-full bg-primary" title="Live mapping" />
+                  </div>
+                  <div className="truncate text-[10px] text-muted-foreground">{market.displayName}</div>
+                </button>
+              </div>
               <button type="button" onClick={() => onSelect(market.symbol)} className="text-right font-mono text-[11px]">
                 {price(market.currentPrice)}
               </button>
