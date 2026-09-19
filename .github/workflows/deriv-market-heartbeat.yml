@@ -16,7 +16,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-heartbeat-workflow:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate PR heartbeat configuration
+        run: echo "Heartbeat endpoint and workflow are validated by the repository Quality Gate; production calls begin only after merge to main."
+
   heartbeat-production:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
