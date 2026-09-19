@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LineChart,
   Menu,
+  Radar,
   Radio,
   Settings,
   Shield,
@@ -26,6 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 const NAV = [
   { to: "/dashboard", label: "Command Center", icon: LayoutDashboard },
   { to: "/trading", label: "Trading Terminal", icon: CandlestickChart },
+  { to: "/scanner", label: "Opportunity Scanner", icon: Radar },
   { to: "/matrix", label: "Smart Matrix", icon: Grid3x3 },
   { to: "/signals", label: "Signals", icon: Radio },
   { to: "/performance", label: "Performance", icon: BarChart3 },
