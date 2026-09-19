@@ -173,7 +173,9 @@ async function getSharedSocket(): Promise<WebSocket> {
       } catch {
         // Cleanup only.
       }
-      finishReject(new DerivMarketDataError("Deriv WebSocket connection timed out", "REQUEST_TIMEOUT"));
+      finishReject(
+        new DerivMarketDataError("Deriv WebSocket connection timed out", "REQUEST_TIMEOUT"),
+      );
     }, 10_000);
 
     socket.onopen = () => {
@@ -187,12 +189,16 @@ async function getSharedSocket(): Promise<WebSocket> {
 
     socket.onerror = () => {
       clearTimeout(connectionTimer);
-      finishReject(new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"));
+      finishReject(
+        new DerivMarketDataError("Deriv WebSocket connection failed", "WS_CONNECTION_FAILED"),
+      );
     };
 
     socket.onclose = () => {
       clearTimeout(connectionTimer);
-      finishReject(new DerivMarketDataError("Deriv WebSocket connection closed", "WS_CONNECTION_FAILED"));
+      finishReject(
+        new DerivMarketDataError("Deriv WebSocket connection closed", "WS_CONNECTION_FAILED"),
+      );
     };
   }).finally(() => {
     connectingSocket = null;
