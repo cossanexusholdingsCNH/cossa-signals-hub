@@ -20,6 +20,15 @@ function positive(value: number, label: string) {
   return value;
 }
 
+function dataConfidenceFromDiagnostics(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  const diagnostics = value as Record<string, unknown>;
+  const raw = diagnostics["data_confidence"];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return 0;
+  const score = Number((raw as Record<string, unknown>)["score"] ?? 0);
+  return Number.isFinite(score) && score >= 0 && score <= 100 ? score : 0;
+}
+
 export async function createManualOrderIntent(input: ManualOrderIntent) {
   positive(input.requestedAmount, "requested amount");
   positive(input.requestedEntry, "requested entry");
@@ -49,32 +58,28 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
   if (input.signalId) {
     const { data: signal, error: signalError } = await supabaseAdmin
       .from("signals")
-      .select(
-        "id,instrument_id,direction,timeframe,confidence_score,data_confidence_score,data_timestamp,calculated_at,created_at",
-      )
+      .select("id,instrument_id,direction,timeframe,confidence_score,data_timestamp,calculated_at,created_at")
       .eq("id", input.signalId)
       .eq("instrument_id", input.instrumentId)
       .single();
     if (signalError || !signal) throw new Error("Selected signal was not found for this instrument");
 
-    const latestEvidence = await supabaseAdmin
-      .from("signal_evidence")
-      .select("data_confidence_score,generated_at,timeframe")
+    const latestEngineRun = await supabaseAdmin
+      .from("signal_engine_runs")
+      .select("diagnostics,finished_at")
       .eq("instrument_id", input.instrumentId)
       .eq("timeframe", signal.timeframe)
-      .order("generated_at", { ascending: false })
+      .order("finished_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (latestEvidence.error) {
-      throw new Error(`Unable to verify signal data confidence: ${latestEvidence.error.message}`);
+    if (latestEngineRun.error) {
+      throw new Error(`Unable to verify signal data confidence: ${latestEngineRun.error.message}`);
     }
 
     const confidence = Number(signal.confidence_score ?? 0);
-    const dataConfidence = Number(
-      signal.data_confidence_score ?? latestEvidence.data?.data_confidence_score ?? 0,
-    );
+    const dataConfidence = dataConfidenceFromDiagnostics(latestEngineRun.data?.diagnostics);
     const generatedAt =
-      latestEvidence.data?.generated_at ??
+      latestEngineRun.data?.finished_at ??
       signal.data_timestamp ??
       signal.calculated_at ??
       signal.created_at;
