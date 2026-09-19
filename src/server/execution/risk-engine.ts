@@ -11,6 +11,8 @@ export type ExecutionRiskInput = {
   stopLoss: number;
   confidence: number;
   minimumConfidence: number;
+  dataConfidence: number;
+  minimumDataConfidence: number;
   marketDataAgeMs: number;
   maximumMarketDataAgeMs: number;
   accountEnabled: boolean;
@@ -38,6 +40,7 @@ export type ExecutionRiskDecision = {
     openPositionGateClear: boolean;
     perTradeRiskGateClear: boolean;
     signalQualityGateClear: boolean;
+    dataConfidenceGateClear: boolean;
     staleDataGateClear: boolean;
     duplicateOrderGateClear: boolean;
     positionSizeGateClear: boolean;
@@ -46,6 +49,7 @@ export type ExecutionRiskDecision = {
 };
 
 const finitePositive = (value: number) => Number.isFinite(value) && value > 0;
+const finitePercentage = (value: number) => Number.isFinite(value) && value >= 0 && value <= 100;
 
 function floorToStep(value: number, step: number) {
   const precision = Math.max(0, (String(step).split(".")[1] ?? "").length);
@@ -60,6 +64,13 @@ export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskD
     throw new Error("Start-of-day equity must be positive");
   if (!finitePositive(input.entry) || !finitePositive(input.stopLoss))
     throw new Error("Entry and stop loss must be positive");
+  if (!finitePercentage(input.confidence)) throw new Error("Signal confidence must be between 0 and 100");
+  if (!finitePercentage(input.minimumConfidence))
+    throw new Error("Minimum signal confidence must be between 0 and 100");
+  if (!finitePercentage(input.dataConfidence))
+    throw new Error("Data confidence must be between 0 and 100");
+  if (!finitePercentage(input.minimumDataConfidence))
+    throw new Error("Minimum data confidence must be between 0 and 100");
 
   const stopDistance = Math.abs(input.entry - input.stopLoss);
   if (!finitePositive(stopDistance)) throw new Error("Stop distance must be positive");
@@ -88,6 +99,7 @@ export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskD
     openPositionGateClear: input.openPositions < input.maxOpenPositions,
     perTradeRiskGateClear: requestedRiskPct > 0 && requestedRiskPct <= input.maxRiskPerTradePct,
     signalQualityGateClear: input.confidence >= input.minimumConfidence,
+    dataConfidenceGateClear: input.dataConfidence >= input.minimumDataConfidence,
     staleDataGateClear:
       input.marketDataAgeMs >= 0 && input.marketDataAgeMs <= input.maximumMarketDataAgeMs,
     duplicateOrderGateClear: !input.duplicateOrder,
@@ -105,6 +117,8 @@ export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskD
     rejectionReasons.push("Requested risk exceeds account per-trade limit");
   if (!gates.signalQualityGateClear)
     rejectionReasons.push("Signal confidence is below execution threshold");
+  if (!gates.dataConfidenceGateClear)
+    rejectionReasons.push("Data confidence is below execution threshold");
   if (!gates.staleDataGateClear) rejectionReasons.push("Market data is stale");
   if (!gates.duplicateOrderGateClear) rejectionReasons.push("Duplicate execution intent detected");
   if (!gates.positionSizeGateClear)
