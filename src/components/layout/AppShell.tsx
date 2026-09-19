@@ -24,6 +24,7 @@ import { RISK_DISCLAIMER } from "@/lib/cossa";
 import { usePlatformControls } from "@/hooks/useCossa";
 import { useAuth, useRoles } from "@/hooks/useAuth";
 import { CossaMark } from "@/components/layout/CossaMark";
+import { AccountBalanceStrip } from "@/components/trading/AccountBalanceStrip";
 import { supabase } from "@/integrations/supabase/client";
 
 const NAV = [
@@ -177,6 +178,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </button>
       </header>
 
+      {tradingWorkspace ? (
+        <div className="border-b border-border bg-background/95 px-2 py-1.5 sm:px-3 lg:px-4">
+          <AccountBalanceStrip compact />
+        </div>
+      ) : null}
+
       <div className="flex">
         <aside
           className={cn(
@@ -184,7 +191,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             collapsed ? "w-16" : "w-56",
           )}
         >
-          <div className="sticky top-14">{nav()}</div>
+          <div className={cn("sticky", tradingWorkspace ? "top-[6.75rem]" : "top-14")}>{nav()}</div>
         </aside>
 
         {open ? (
