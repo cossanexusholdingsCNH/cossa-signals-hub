@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../integrations/supabase/client.server";
+import { fetchDerivTick } from "../market-data/deriv";
 import { evaluateExecutionRisk } from "./risk-engine";
 
 export type PaperExecutionRequest = {
@@ -37,6 +38,55 @@ function requirePercentage(value: unknown, label: string): number {
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100)
     throw new Error(`${label} must be between 0 and 100`);
   return parsed;
+}
+
+async function currentServerMarketState(instrumentId: string, providerSlug: string) {
+  if (providerSlug === "deriv") {
+    const provider = await supabaseAdmin
+      .from("market_data_providers")
+      .select("id,enabled")
+      .eq("slug", "deriv")
+      .single();
+    if (provider.error || !provider.data?.enabled)
+      throw new Error("Enabled Deriv provider is unavailable; execution fails closed");
+
+    const mapping = await supabaseAdmin
+      .from("instrument_provider_mappings")
+      .select("provider_symbol,enabled")
+      .eq("provider_id", provider.data.id)
+      .eq("instrument_id", instrumentId)
+      .eq("enabled", true)
+      .maybeSingle();
+    if (mapping.error || !mapping.data?.provider_symbol)
+      throw new Error("Deriv instrument mapping is unavailable; execution fails closed");
+
+    const tick = await fetchDerivTick(mapping.data.provider_symbol);
+    const observedAt = new Date(tick.epoch * 1000);
+    if (!Number.isFinite(observedAt.getTime()))
+      throw new Error("Deriv returned an invalid execution tick timestamp");
+
+    return {
+      source: "deriv_live_tick",
+      observedAt: observedAt.toISOString(),
+      price: Number(tick.quote),
+      providerSymbol: mapping.data.provider_symbol,
+    };
+  }
+
+  const instrument = await supabaseAdmin
+    .from("instruments")
+    .select("current_price,last_data_at")
+    .eq("id", instrumentId)
+    .single();
+  if (instrument.error || !instrument.data?.last_data_at)
+    throw new Error("Current persisted market state is unavailable; execution fails closed");
+
+  return {
+    source: "persisted_instrument_state",
+    observedAt: String(instrument.data.last_data_at),
+    price: Number(instrument.data.current_price ?? 0),
+    providerSymbol: null,
+  };
 }
 
 export async function evaluatePaperExecution(
@@ -81,7 +131,7 @@ export async function evaluatePaperExecution(
   const accountResult = await supabaseAdmin
     .from("trading_accounts")
     .select(
-      "id,user_id,account_environment,execution_mode,enabled,emergency_stop,max_risk_per_trade_pct,max_daily_loss_pct,max_open_positions",
+      "id,user_id,provider,account_environment,execution_mode,enabled,emergency_stop,max_risk_per_trade_pct,max_daily_loss_pct,max_open_positions",
     )
     .eq("id", order.trading_account_id)
     .eq("user_id", request.userId)
@@ -138,11 +188,12 @@ export async function evaluatePaperExecution(
       : {};
   const confidence = requirePercentage(metadata["confidence"] ?? 0, "signal confidence");
   const dataConfidence = requirePercentage(metadata["data_confidence"] ?? 0, "data confidence");
-  const marketGeneratedAt = metadata["generated_at"] ?? metadata["signal_generated_at"];
-  const marketDataAgeMs =
-    typeof marketGeneratedAt === "string"
-      ? now.getTime() - new Date(marketGeneratedAt).getTime()
-      : Number.POSITIVE_INFINITY;
+
+  // Evidence freshness and market-data freshness are intentionally separate concepts.
+  // createManualOrderIntent validates the selected evidence against scanner gates.
+  // Here the execution risk engine verifies a fresh market observation obtained server-side.
+  const marketState = await currentServerMarketState(order.instrument_id, String(account.provider));
+  const marketDataAgeMs = now.getTime() - new Date(marketState.observedAt).getTime();
 
   const decision = evaluateExecutionRisk({
     equity: requireFinitePositive(snapshot.equity, "equity"),
@@ -204,6 +255,10 @@ export async function evaluatePaperExecution(
         snapshotAgeMs,
         marketDataAgeMs,
         maximumMarketDataAgeMs,
+        marketDataSource: marketState.source,
+        marketObservedAt: marketState.observedAt,
+        marketPrice: marketState.price,
+        providerSymbol: marketState.providerSymbol,
       },
       rejection_reasons: decision.rejectionReasons,
     })
@@ -230,6 +285,10 @@ export async function evaluatePaperExecution(
         calculated_position_size: decision.positionSize,
         minimum_data_confidence: minimumDataConfidence,
         paper_submission_only: true,
+        server_market_data_source: marketState.source,
+        server_market_observed_at: marketState.observedAt,
+        server_market_price: marketState.price,
+        provider_symbol: marketState.providerSymbol,
       },
     })
     .eq("id", order.id)
@@ -247,6 +306,9 @@ export async function evaluatePaperExecution(
       signal_confidence: confidence,
       data_confidence: dataConfidence,
       minimum_data_confidence: minimumDataConfidence,
+      market_data_source: marketState.source,
+      market_observed_at: marketState.observedAt,
+      market_price: marketState.price,
       rejection_reasons: decision.rejectionReasons,
     },
   });
