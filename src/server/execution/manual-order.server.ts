@@ -28,7 +28,9 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
 
   const { data: account, error: accountError } = await supabaseAdmin
     .from("trading_accounts")
-    .select("id,user_id,provider,account_environment,execution_mode,enabled,emergency_stop,currency")
+    .select(
+      "id,user_id,provider,account_environment,execution_mode,enabled,emergency_stop,currency",
+    )
     .eq("id", input.tradingAccountId)
     .eq("user_id", input.userId)
     .single();
@@ -69,7 +71,8 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
     })
     .select("id,status,execution_mode,confirmation_required,created_at")
     .single();
-  if (error || !order) throw new Error(`Unable to create execution order: ${error?.message ?? "missing order"}`);
+  if (error || !order)
+    throw new Error(`Unable to create execution order: ${error?.message ?? "missing order"}`);
 
   const { error: eventError } = await supabaseAdmin.from("execution_events").insert({
     order_id: order.id,
