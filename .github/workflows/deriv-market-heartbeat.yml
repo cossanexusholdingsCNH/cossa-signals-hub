@@ -1,0 +1,50 @@
+name: Deriv Market Heartbeat
+
+on:
+  schedule:
+    - cron: "* * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/deriv-market-heartbeat.yml"
+      - "src/routes/api.deriv-heartbeat.ts"
+      - "src/server/market-data/deriv-heartbeat.server.ts"
+      - "src/server/runtime/scheduler-lease.server.ts"
+
+concurrency:
+  group: deriv-market-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  heartbeat-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      DERIV_HEARTBEAT_URL: ${{ vars.DERIV_HEARTBEAT_URL }}
+    steps:
+      - name: Verify protected scheduler secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET is not configured for GitHub Actions." >&2
+            exit 1
+          fi
+
+      - name: Refresh Deriv market heartbeat
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${DERIV_HEARTBEAT_URL:-https://cossa-signals-hub.vercel.app/api/deriv-heartbeat}"
+          response_file="$(mktemp)"
+          http_code="$(curl --silent --show-error --location --retry 2 --retry-all-errors --connect-timeout 10 --max-time 120 --output "${response_file}" --write-out "%{http_code}" --header "Authorization: Bearer ${CRON_SECRET}" "${url}")"
+          if [ "${http_code}" -lt 200 ] || [ "${http_code}" -ge 300 ]; then
+            echo "Deriv heartbeat returned HTTP ${http_code}." >&2
+            cat "${response_file}" >&2
+            exit 1
+          fi
+          jq -e '.ok == true' "${response_file}" >/dev/null
+          cat "${response_file}" >> "${GITHUB_STEP_SUMMARY}"
