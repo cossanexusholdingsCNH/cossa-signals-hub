@@ -52,21 +52,34 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
     confidence: number;
     dataConfidence: number;
     generatedAt: string;
+    dataTo: string | null;
     direction: string;
     timeframe: string;
+    riskReward: number | null;
   } | null = null;
 
   if (input.signalEvidenceId) {
-    const { data: evidence, error: evidenceError } = await supabaseAdmin
-      .from("signal_evidence")
-      .select(
-        "id,instrument_id,direction,timeframe,confidence_score,data_confidence_score,generated_at,data_to,entry,stop_loss,take_profit_1",
-      )
-      .eq("id", input.signalEvidenceId)
-      .eq("instrument_id", input.instrumentId)
-      .single();
+    const [{ data: evidence, error: evidenceError }, controls] = await Promise.all([
+      supabaseAdmin
+        .from("signal_evidence")
+        .select(
+          "id,instrument_id,direction,timeframe,confidence_score,data_confidence_score,risk_reward_ratio,generated_at,data_to,entry,stop_loss,take_profit_1,no_trade_reasons",
+        )
+        .eq("id", input.signalEvidenceId)
+        .eq("instrument_id", input.instrumentId)
+        .single(),
+      supabaseAdmin
+        .from("platform_controls")
+        .select("scanner_min_signal_confidence,scanner_min_data_confidence,scanner_min_risk_reward,scanner_max_candidate_age_minutes")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .single(),
+    ]);
+
     if (evidenceError || !evidence)
       throw new Error("Selected Cossa evidence was not found for this instrument");
+    if (controls.error || !controls.data)
+      throw new Error("Scanner qualification controls are unavailable; execution fails closed");
 
     const direction = String(evidence.direction);
     if (direction !== "buy" && direction !== "sell")
@@ -74,12 +87,36 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
     if (direction !== input.side)
       throw new Error(`Order side must match current Cossa evidence (${direction.toUpperCase()})`);
 
+    const confidence = Number(evidence.confidence_score ?? 0);
+    const dataConfidence = Number(evidence.data_confidence_score ?? 0);
+    const riskReward = evidence.risk_reward_ratio == null ? null : Number(evidence.risk_reward_ratio);
+    const minConfidence = Number(controls.data.scanner_min_signal_confidence);
+    const minDataConfidence = Number(controls.data.scanner_min_data_confidence);
+    const minRiskReward = Number(controls.data.scanner_min_risk_reward);
+    const maxAgeMinutes = Number(controls.data.scanner_max_candidate_age_minutes);
+    const evidenceAt = evidence.data_to ?? evidence.generated_at;
+    const evidenceAgeMs = Date.now() - new Date(evidenceAt).getTime();
+    const noTradeReasons = Array.isArray(evidence.no_trade_reasons) ? evidence.no_trade_reasons : [];
+
+    if (!Number.isFinite(evidenceAgeMs) || evidenceAgeMs < 0 || evidenceAgeMs > maxAgeMinutes * 60_000)
+      throw new Error("Selected Cossa evidence is outside the configured scanner freshness window");
+    if (confidence < minConfidence)
+      throw new Error("Selected Cossa evidence is below the configured signal-confidence gate");
+    if (dataConfidence < minDataConfidence)
+      throw new Error("Selected Cossa evidence is below the configured data-confidence gate");
+    if (riskReward == null || !Number.isFinite(riskReward) || riskReward < minRiskReward)
+      throw new Error("Selected Cossa evidence is below the configured risk/reward gate");
+    if (noTradeReasons.length > 0)
+      throw new Error(`Selected Cossa evidence contains an engine rejection: ${String(noTradeReasons[0])}`);
+
     signalEvidence = {
-      confidence: Number(evidence.confidence_score ?? 0),
-      dataConfidence: Number(evidence.data_confidence_score ?? 0),
-      generatedAt: evidence.data_to ?? evidence.generated_at,
+      confidence,
+      dataConfidence,
+      generatedAt: evidence.generated_at,
+      dataTo: evidence.data_to ?? null,
       direction,
       timeframe: String(evidence.timeframe),
+      riskReward,
     };
   } else if (input.signalId) {
     const { data: signal, error: signalError } = await supabaseAdmin
@@ -113,8 +150,10 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
       confidence,
       dataConfidence,
       generatedAt,
+      dataTo: signal.data_timestamp ?? null,
       direction: String(signal.direction),
       timeframe: String(signal.timeframe),
+      riskReward: null,
     };
   }
 
@@ -157,8 +196,10 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
         confidence: signalEvidence?.confidence ?? null,
         data_confidence: signalEvidence?.dataConfidence ?? null,
         generated_at: signalEvidence?.generatedAt ?? null,
+        evidence_data_to: signalEvidence?.dataTo ?? null,
         signal_direction: signalEvidence?.direction ?? null,
         timeframe: signalEvidence?.timeframe ?? null,
+        risk_reward_ratio: signalEvidence?.riskReward ?? null,
       },
     })
     .select("id,status,execution_mode,confirmation_required,created_at")
@@ -179,6 +220,7 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
       signal_confidence: signalEvidence?.confidence ?? null,
       data_confidence: signalEvidence?.dataConfidence ?? null,
       signal_generated_at: signalEvidence?.generatedAt ?? null,
+      evidence_data_to: signalEvidence?.dataTo ?? null,
     },
   });
   if (eventError) throw new Error(`Unable to persist execution event: ${eventError.message}`);
