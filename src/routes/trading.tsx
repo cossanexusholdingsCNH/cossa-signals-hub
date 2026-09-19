@@ -1,19 +1,32 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, LockKeyhole, ShieldCheck, WalletCards } from "lucide-react";
+import {
+  Activity,
+  Columns3,
+  LockKeyhole,
+  PanelRight,
+  Rows3,
+  ShieldCheck,
+  Square,
+  TerminalSquare,
+  WalletCards,
+} from "lucide-react";
 
 import { RequireAuth } from "@/components/layout/RequireAuth";
 import { MarketExecutionChart } from "@/components/trading/MarketExecutionChart";
-import { PositionLifecyclePanel } from "@/components/trading/PositionLifecyclePanel";
+import { MarketWatchPanel } from "@/components/trading/MarketWatchPanel";
+import { TradingTerminalDock } from "@/components/trading/TradingTerminalDock";
 import { useAuth } from "@/hooks/useAuth";
 import { useInstruments } from "@/hooks/useCossa";
 import { useDerivLiveTick } from "@/hooks/useDerivLiveTick";
 import { useOpportunityScanner } from "@/hooks/useOpportunityScanner";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 
 const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h"] as const;
 type TradingSearch = { symbol?: string; timeframe?: string };
+type LayoutMode = "split" | "ticket-below" | "focus";
 
 export const Route = createFileRoute("/trading")({
   validateSearch: (search: Record<string, unknown>): TradingSearch => ({
@@ -41,12 +54,7 @@ function TradingWorkspace() {
   const tradable = useMemo(
     () =>
       instruments
-        .filter(
-          (item) =>
-            item.enabled !== false &&
-            item.provider === "deriv" &&
-            !item.is_demo,
-        )
+        .filter((item) => item.enabled !== false && item.provider === "deriv" && !item.is_demo)
         .sort(
           (a, b) =>
             (b.last_data_at ? new Date(b.last_data_at).getTime() : 0) -
@@ -82,6 +90,9 @@ function TradingWorkspace() {
   const [takeProfit, setTakeProfit] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("ticket-below");
+  const [showMarketWatch, setShowMarketWatch] = useState(true);
+  const [showTerminalDock, setShowTerminalDock] = useState(true);
 
   const selectedSymbol =
     symbol || requestedInstrument?.symbol || preferredOpportunity?.symbol || tradable[0]?.symbol || "";
@@ -96,9 +107,7 @@ function TradingWorkspace() {
   const activeOpportunity =
     symbolEvidence.find((item) => item.timeframe === selectedTimeframe) ?? evidenceDefault;
 
-  const rejectedDeepLink = Boolean(
-    search.symbol && instruments.length > 0 && !requestedInstrument,
-  );
+  const rejectedDeepLink = Boolean(search.symbol && instruments.length > 0 && !requestedInstrument);
 
   const accounts = useQuery({
     queryKey: ["trading_accounts", user?.id],
@@ -193,21 +202,11 @@ function TradingWorkspace() {
       : null;
   const demoAccount = selectedAccount?.account_environment === "demo";
   const demoEvidenceLocked = Boolean(demoAccount && executableEvidence);
-
   const ticketSide: "buy" | "sell" =
-    demoEvidenceLocked && executableEvidence
-      ? executableEvidence.direction
-      : side;
-  const ticketEntry = demoAccount
-    ? String(executableEvidence?.entry ?? "")
-    : entry;
-  const ticketStopLoss = demoAccount
-    ? String(executableEvidence?.stopLoss ?? "")
-    : stopLoss;
-  const ticketTakeProfit = demoAccount
-    ? String(executableEvidence?.takeProfit1 ?? "")
-    : takeProfit;
-
+    demoEvidenceLocked && executableEvidence ? executableEvidence.direction : side;
+  const ticketEntry = demoAccount ? String(executableEvidence?.entry ?? "") : entry;
+  const ticketStopLoss = demoAccount ? String(executableEvidence?.stopLoss ?? "") : stopLoss;
+  const ticketTakeProfit = demoAccount ? String(executableEvidence?.takeProfit1 ?? "") : takeProfit;
   const chartEntry = demoAccount
     ? executableEvidence?.entry ?? null
     : Number(entry) || activeOpportunity?.entry || null;
@@ -221,6 +220,14 @@ function TradingWorkspace() {
   function selectInstrument(nextSymbol: string) {
     setSymbol(nextSymbol);
     setTimeframe("");
+    setEntry("");
+    setStopLoss("");
+    setTakeProfit("");
+    setResult(null);
+  }
+
+  function selectTimeframe(next: string) {
+    setTimeframe(next);
     setEntry("");
     setStopLoss("");
     setTakeProfit("");
@@ -244,7 +251,6 @@ function TradingWorkspace() {
       setResult({ ok: false, message: "Set up a Demo account and select an instrument first." });
       return;
     }
-
     if (demoAccount && !executableEvidence) {
       setResult({
         ok: false,
@@ -306,9 +312,7 @@ function TradingWorkspace() {
           rejectionReasons?: string[];
         };
       };
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "Order submission failed");
-      }
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Order submission failed");
 
       if (payload.decision?.confirmationRequired) {
         setResult({
@@ -345,375 +349,233 @@ function TradingWorkspace() {
 
   const demoExecutable = Boolean(executableEvidence);
 
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-            Execution workspace
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold">Cossa Trading Terminal</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Verified live Deriv charting and immutable Cossa evidence. Demo execution remains
-            server-controlled and risk-gated.
-          </p>
+  const ticket = (
+    <OrderTicket
+      selectedAccount={selectedAccount}
+      demoAccount={Boolean(demoAccount)}
+      demoExecutable={demoExecutable}
+      demoEvidenceLocked={demoEvidenceLocked}
+      ticketSide={ticketSide}
+      amount={amount}
+      setAmount={setAmount}
+      ticketEntry={ticketEntry}
+      ticketStopLoss={ticketStopLoss}
+      ticketTakeProfit={ticketTakeProfit}
+      setEntry={setEntry}
+      setStopLoss={setStopLoss}
+      setTakeProfit={setTakeProfit}
+      setSide={setSide}
+      submitting={submitting}
+      instrumentReady={Boolean(instrument)}
+      result={result}
+      onSubmit={() => void submitOrder()}
+    />
+  );
+
+  const analysis = (
+    <div className="grid gap-2 lg:grid-cols-2">
+      <section className="rounded-lg border bg-card p-3">
+        <div className="flex items-center gap-2">
+          <Activity className="size-4 text-primary" />
+          <h2 className="text-sm font-semibold">Cossa analysis</h2>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
-          <ShieldCheck className="size-4 text-primary" /> Server-controlled execution
+        {activeOpportunity ? (
+          <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+            <p><span className="text-muted-foreground">Decision</span><br/><strong className="uppercase">{activeOpportunity.direction.replace("_", " ")}</strong> · {activeOpportunity.confidenceScore}%</p>
+            <p><span className="text-muted-foreground">Data / R:R</span><br/><strong>{activeOpportunity.dataConfidenceScore ?? "—"}%</strong> · {activeOpportunity.riskRewardRatio?.toFixed(2) ?? "—"}</p>
+            <p><span className="text-muted-foreground">Structure</span><br/>{activeOpportunity.structure?.trend ?? "unavailable"} · {activeOpportunity.structure?.breakout ?? "—"}</p>
+            <p><span className="text-muted-foreground">Regime</span><br/>{activeOpportunity.regime}</p>
+            {!activeOpportunity.qualified ? (
+              <p className="sm:col-span-2 text-caution">Not executable: {activeOpportunity.qualificationReasons.slice(0, 2).join(" · ")}</p>
+            ) : null}
+            {demoEvidenceLocked ? (
+              <p className="sm:col-span-2 inline-flex items-center gap-1.5 text-primary"><LockKeyhole className="size-3.5" /> Qualified plan auto-loaded into Demo ticket</p>
+            ) : activeOpportunity.direction === "buy" || activeOpportunity.direction === "sell" ? (
+              <button type="button" onClick={loadEvidencePlan} className="sm:col-span-2 w-fit rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary">Load current evidence into order ticket</button>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">No current Cossa evidence for this instrument/timeframe yet.</p>
+        )}
+      </section>
+
+      <section className="rounded-lg border bg-card p-3">
+        <div className="flex items-center gap-2"><WalletCards className="size-4 text-primary"/><h2 className="text-sm font-semibold">Account state</h2></div>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+          <p>Environment<br/><strong className="text-foreground">{selectedAccount?.account_environment?.toUpperCase() ?? "Not configured"}</strong></p>
+          <p>Provider<br/><strong className="text-foreground">{selectedAccount?.provider ?? "—"}</strong></p>
+          <p>Mode<br/><strong className="text-foreground">{selectedAccount?.execution_mode ?? "—"}</strong></p>
+          <p>Emergency stop<br/><strong className="text-foreground">{selectedAccount?.emergency_stop ? "ACTIVE" : "Clear"}</strong></p>
+        </div>
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-2 py-2">
+        <div className="min-w-[190px]">
+          <select className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground" value={selectedSymbol} onChange={(event) => selectInstrument(event.target.value)}>
+            {tradable.map((item) => <option key={item.id} value={item.symbol}>{item.display_name} · LIVE</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-0.5 overflow-x-auto rounded-md border border-border bg-background p-0.5">
+          {TIMEFRAMES.map((value) => (
+            <button key={value} type="button" onClick={() => selectTimeframe(value)} className={cn("rounded px-2.5 py-1 text-[11px] font-medium", selectedTimeframe === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{value.toUpperCase()}</button>
+          ))}
+        </div>
+
+        <select className="min-w-[160px] rounded-md border bg-background px-2 py-1.5 text-xs text-foreground" value={selectedAccount?.id ?? ""} onChange={(event) => { setAccountId(event.target.value); setResult(null); }}>
+          {(accounts.data ?? []).length === 0 ? <option value="">No trading account</option> : null}
+          {(accounts.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.account_label} · {account.account_environment.toUpperCase()}</option>)}
+        </select>
+
+        <div className="ml-auto flex items-center gap-1">
+          <ToolbarButton label="Split" active={layoutMode === "split"} onClick={() => setLayoutMode("split")}><Columns3 className="size-3.5" /></ToolbarButton>
+          <ToolbarButton label="Ticket below" active={layoutMode === "ticket-below"} onClick={() => setLayoutMode("ticket-below")}><Rows3 className="size-3.5" /></ToolbarButton>
+          <ToolbarButton label="Chart focus" active={layoutMode === "focus"} onClick={() => setLayoutMode("focus")}><Square className="size-3.5" /></ToolbarButton>
+          <ToolbarButton label="Market watch" active={showMarketWatch} onClick={() => setShowMarketWatch((value) => !value)}><PanelRight className="size-3.5" /></ToolbarButton>
+          <ToolbarButton label="Terminal" active={showTerminalDock} onClick={() => setShowTerminalDock((value) => !value)}><TerminalSquare className="size-3.5" /></ToolbarButton>
         </div>
       </div>
 
       {rejectedDeepLink ? (
-        <div className="rounded-xl border border-caution/40 bg-caution/5 p-4 text-xs text-caution">
-          {search.symbol} is not currently available through the verified live Deriv execution
-          feed. The terminal opened {selectedSymbol || "the next verified live market"} instead.
-          No instrument is silently substituted as if it were {search.symbol}.
+        <div className="rounded-md border border-caution/40 bg-caution/5 px-3 py-2 text-xs text-caution">
+          {search.symbol} is not available through the verified live Deriv execution feed. The terminal opened {selectedSymbol || "the next verified live market"} instead.
         </div>
       ) : null}
 
       {!accounts.isLoading && (accounts.data ?? []).length === 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-gold/50 bg-card p-4">
-          <div>
-            <p className="text-sm font-semibold">Demo account required</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Create the virtual Deriv Demo account first so the risk engine has a balance,
-              snapshot and daily risk baseline.
-            </p>
-          </div>
-          <Link
-            to="/demo-setup"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
-          >
-            Set up Demo account
-          </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-gold/50 bg-card p-3">
+          <div><p className="text-sm font-semibold">Demo account required</p><p className="text-xs text-muted-foreground">Create the virtual Deriv Demo account so the risk engine has a balance and daily baseline.</p></div>
+          <Link to="/demo-setup" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Set up Demo account</Link>
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-4">
-          <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3">
-            <label className="text-xs text-muted-foreground">
-              Instrument
-              <select
-                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
-                value={selectedSymbol}
-                onChange={(event) => selectInstrument(event.target.value)}
-              >
-                {tradable.map((item) => (
-                  <option key={item.id} value={item.symbol}>
-                    {item.display_name} · LIVE
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-muted-foreground">
-              Timeframe
-              <select
-                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
-                value={selectedTimeframe}
-                onChange={(event) => {
-                  setTimeframe(event.target.value);
-                  setEntry("");
-                  setStopLoss("");
-                  setTakeProfit("");
-                  setResult(null);
-                }}
-              >
-                {TIMEFRAMES.map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-muted-foreground">
-              Trading account
-              <select
-                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
-                value={selectedAccount?.id ?? ""}
-                onChange={(event) => {
-                  setAccountId(event.target.value);
-                  setResult(null);
-                }}
-              >
-                {(accounts.data ?? []).length === 0 ? (
-                  <option value="">No account configured</option>
-                ) : null}
-                {(accounts.data ?? []).map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.account_label} · {account.account_environment.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <MarketExecutionChart
-            symbol={selectedSymbol || "Market"}
-            timeframe={selectedTimeframe}
-            data={candles.data ?? []}
-            currentPrice={currentPrice}
-            liveEpoch={liveTick.epoch}
-            liveConnected={liveTick.connected}
-            bid={liveTick.bid}
-            ask={liveTick.ask}
-            entryPrice={chartEntry}
-            stopLoss={chartStopLoss}
-            takeProfit1={chartTakeProfit}
-          />
-
-          {streamConfig.data?.provider === "deriv" && liveTick.error ? (
-            <div className="rounded-lg border border-destructive/40 p-3 text-xs text-destructive">
-              Live Deriv stream: {liveTick.error}
+      <div className={cn("grid gap-2", showMarketWatch && layoutMode !== "focus" ? "2xl:grid-cols-[minmax(0,1fr)_285px]" : "grid-cols-1")}>
+        <div className="min-w-0 space-y-2">
+          {layoutMode === "split" ? (
+            <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_330px]">
+              <div className="min-w-0"><MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} /></div>
+              {ticket}
             </div>
-          ) : null}
-          {candles.isFetched && (candles.data ?? []).length === 0 ? (
-            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
-              No stored {selectedTimeframe} OHLC candles are available for {selectedSymbol || "this instrument"}.
-              Choose another available timeframe.
-            </div>
-          ) : null}
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <section className="rounded-xl border bg-card p-4">
-              <div className="flex items-center gap-2">
-                <Activity className="size-4 text-primary" />
-                <h2 className="font-semibold">Cossa analysis</h2>
-              </div>
-              {activeOpportunity ? (
-                <div className="mt-3 space-y-2 text-sm">
-                  <p>
-                    <span className="text-muted-foreground">Decision:</span>{" "}
-                    <strong className="uppercase">{activeOpportunity.direction.replace("_", " ")}</strong>{" "}
-                    · {activeOpportunity.confidenceScore}% signal confidence
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground">Data confidence:</span>{" "}
-                    <strong>{activeOpportunity.dataConfidenceScore ?? "—"}%</strong> · R:R{" "}
-                    {activeOpportunity.riskRewardRatio?.toFixed(2) ?? "—"}
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground">Structure:</span>{" "}
-                    {activeOpportunity.structure?.trend ?? "unavailable"} · breakout{" "}
-                    {activeOpportunity.structure?.breakout ?? "—"}
-                  </p>
-                  {!activeOpportunity.qualified ? (
-                    <p className="text-caution">
-                      Not executable: {activeOpportunity.qualificationReasons.slice(0, 2).join(" · ")}
-                    </p>
-                  ) : null}
-                  {demoEvidenceLocked ? (
-                    <p className="inline-flex items-center gap-1.5 rounded-md border border-border-gold/50 px-3 py-2 text-xs font-medium text-primary">
-                      <LockKeyhole className="size-3.5" /> Qualified plan auto-loaded into Demo ticket
-                    </p>
-                  ) : activeOpportunity.direction === "buy" || activeOpportunity.direction === "sell" ? (
-                    <button
-                      type="button"
-                      onClick={loadEvidencePlan}
-                      className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
-                    >
-                      Load current evidence into order ticket
-                    </button>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>No current Cossa evidence for this instrument/timeframe yet.</p>
-                  {preferredOpportunity ? (
-                    <button
-                      type="button"
-                      onClick={() => selectInstrument(preferredOpportunity.symbol)}
-                      className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
-                    >
-                      Open {preferredOpportunity.displayName}
-                    </button>
-                  ) : null}
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-xl border bg-card p-4">
-              <div className="flex items-center gap-2">
-                <WalletCards className="size-4 text-primary" />
-                <h2 className="font-semibold">Account state</h2>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-                <p>
-                  Environment:{" "}
-                  <strong className="text-foreground">
-                    {selectedAccount?.account_environment?.toUpperCase() ?? "Not configured"}
-                  </strong>
-                </p>
-                <p>
-                  Provider: <strong className="text-foreground">{selectedAccount?.provider ?? "—"}</strong>
-                </p>
-                <p>
-                  Mode: <strong className="text-foreground">{selectedAccount?.execution_mode ?? "—"}</strong>
-                </p>
-                <p>
-                  Emergency stop:{" "}
-                  <strong className="text-foreground">
-                    {selectedAccount?.emergency_stop ? "ACTIVE" : "Clear"}
-                  </strong>
-                </p>
-              </div>
-              {!selectedAccount ? (
-                <Link
-                  to="/demo-setup"
-                  className="mt-3 inline-flex rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
-                >
-                  Set up Deriv Demo
-                </Link>
-              ) : null}
-            </section>
-          </div>
-        </div>
-
-        <aside className="rounded-xl border bg-card p-4 xl:sticky xl:top-20 xl:self-start">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Order ticket</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Demo trades use qualified immutable evidence plus a fresh server-side Deriv tick.
-              </p>
-            </div>
-            {demoEvidenceLocked ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-border-gold/50 px-2 py-1 text-[10px] font-semibold uppercase text-primary">
-                <LockKeyhole className="size-3" /> Evidence locked
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={demoAccount}
-              onClick={() => setSide("buy")}
-              className={`rounded-md border p-3 text-sm font-semibold disabled:cursor-not-allowed ${ticketSide === "buy" ? "border-primary text-primary" : "border-border"} ${demoAccount && ticketSide !== "buy" ? "opacity-40" : ""}`}
-            >
-              BUY
-            </button>
-            <button
-              type="button"
-              disabled={demoAccount}
-              onClick={() => setSide("sell")}
-              className={`rounded-md border p-3 text-sm font-semibold disabled:cursor-not-allowed ${ticketSide === "sell" ? "border-primary text-primary" : "border-border"} ${demoAccount && ticketSide !== "sell" ? "opacity-40" : ""}`}
-            >
-              SELL
-            </button>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <label className="block text-xs text-muted-foreground">
-              Amount / size
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground"
-              />
-            </label>
-            <TicketPlanField
-              label="Entry"
-              value={ticketEntry}
-              locked={Boolean(demoAccount)}
-              onChange={setEntry}
-            />
-            <TicketPlanField
-              label="Stop loss"
-              value={ticketStopLoss}
-              locked={Boolean(demoAccount)}
-              onChange={setStopLoss}
-            />
-            <TicketPlanField
-              label="Take profit"
-              value={ticketTakeProfit}
-              locked={Boolean(demoAccount)}
-              onChange={setTakeProfit}
-            />
-          </div>
-
-          <div className="mt-4 rounded-lg border border-border p-3 text-xs text-muted-foreground">
-            {!selectedAccount
-              ? "No trading account configured. Set up the Deriv Demo account before submitting orders."
-              : selectedAccount.account_environment === "live"
-                ? "LIVE account selected. Submission creates an order awaiting explicit confirmation."
-                : demoExecutable
-                  ? `DEMO account selected. Cossa ${ticketSide.toUpperCase()} plan is locked into the ticket; only size is editable. The server will independently re-qualify the evidence and verify a fresh Deriv tick before execution.`
-                  : "DEMO account selected, but the current evidence is WAIT/REJECTED or missing. Analysis remains available; execution fails closed."}
-          </div>
-
-          {!selectedAccount ? (
-            <Link
-              to="/demo-setup"
-              className="mt-4 flex w-full justify-center rounded-md border border-border-gold px-4 py-3 text-sm font-semibold text-primary"
-            >
-              Set up Demo account
-            </Link>
           ) : (
-            <button
-              type="button"
-              disabled={
-                submitting ||
-                !instrument ||
-                selectedAccount.emergency_stop ||
-                (demoAccount && !demoExecutable)
-              }
-              onClick={() => void submitOrder()}
-              className="mt-4 w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? "Submitting…" : `Submit ${ticketSide.toUpperCase()}`}
-            </button>
+            <MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} />
           )}
 
-          {result ? (
-            <div
-              className={`mt-3 rounded-md border p-3 text-xs ${
-                result.ok
-                  ? "border-primary/40 text-primary"
-                  : "border-destructive/40 text-destructive"
-              }`}
-            >
-              {result.message}
-            </div>
+          {streamConfig.data?.provider === "deriv" && liveTick.error ? (
+            <div className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">Live Deriv stream: {liveTick.error}</div>
           ) : null}
-          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-            The browser sends an authenticated intent only. Qualification, market freshness, risk
-            evaluation and fill decisions remain server-side.
-          </p>
-        </aside>
+          {candles.isFetched && (candles.data ?? []).length === 0 ? (
+            <div className="rounded-md border border-border p-2 text-xs text-muted-foreground">No stored {selectedTimeframe} OHLC candles are available for {selectedSymbol || "this instrument"}. Choose another available timeframe.</div>
+          ) : null}
+
+          {layoutMode !== "focus" ? analysis : null}
+          {layoutMode === "ticket-below" ? ticket : null}
+        </div>
+
+        {showMarketWatch && layoutMode !== "focus" ? (
+          <MarketWatchPanel
+            markets={tradable.map((item) => ({ id: item.id, symbol: item.symbol, displayName: item.display_name, category: item.category, assetClass: item.asset_class, currentPrice: item.current_price, lastDataAt: item.last_data_at }))}
+            selectedSymbol={selectedSymbol}
+            opportunities={currentEvidence}
+            onSelect={selectInstrument}
+          />
+        ) : null}
       </div>
 
-      <PositionLifecyclePanel />
+      {showTerminalDock && layoutMode !== "focus" ? (
+        <TradingTerminalDock opportunities={currentEvidence} liveConnected={liveTick.connected} symbol={selectedSymbol} timeframe={selectedTimeframe} streamError={liveTick.error} executionMessage={result} />
+      ) : null}
+
+      {layoutMode === "focus" ? (
+        <div className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+          <span>Chart Focus hides execution panels but does not change server execution state.</span>
+          <button type="button" onClick={() => setLayoutMode("ticket-below")} className="text-primary">Restore workstation</button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function TicketPlanField({
-  label,
-  value,
-  locked,
-  onChange,
+function ToolbarButton({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" title={label} aria-label={label} onClick={onClick} className={cn("rounded-md border p-2 transition-colors", active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground")}>{children}</button>;
+}
+
+function OrderTicket({
+  selectedAccount,
+  demoAccount,
+  demoExecutable,
+  demoEvidenceLocked,
+  ticketSide,
+  amount,
+  setAmount,
+  ticketEntry,
+  ticketStopLoss,
+  ticketTakeProfit,
+  setEntry,
+  setStopLoss,
+  setTakeProfit,
+  setSide,
+  submitting,
+  instrumentReady,
+  result,
+  onSubmit,
 }: {
-  label: string;
-  value: string;
-  locked: boolean;
-  onChange: (value: string) => void;
+  selectedAccount: any;
+  demoAccount: boolean;
+  demoExecutable: boolean;
+  demoEvidenceLocked: boolean;
+  ticketSide: "buy" | "sell";
+  amount: string;
+  setAmount: (value: string) => void;
+  ticketEntry: string;
+  ticketStopLoss: string;
+  ticketTakeProfit: string;
+  setEntry: (value: string) => void;
+  setStopLoss: (value: string) => void;
+  setTakeProfit: (value: string) => void;
+  setSide: (value: "buy" | "sell") => void;
+  submitting: boolean;
+  instrumentReady: boolean;
+  result: { ok: boolean; message: string } | null;
+  onSubmit: () => void;
 }) {
   return (
-    <label className="block text-xs text-muted-foreground">
-      <span className="flex items-center justify-between gap-2">
-        {label}
-        {locked ? <span className="text-[10px] uppercase text-primary">Cossa evidence</span> : null}
-      </span>
-      <input
-        type="number"
-        step="any"
-        value={value}
-        disabled={locked}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-80"
-      />
+    <aside className="rounded-lg border bg-card p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div><h2 className="text-sm font-semibold">Order ticket</h2><p className="mt-0.5 text-[10px] text-muted-foreground">Qualified Cossa evidence + fresh server-side Deriv tick.</p></div>
+        {demoEvidenceLocked ? <span className="inline-flex items-center gap-1 rounded-full border border-border-gold/50 px-2 py-1 text-[9px] font-semibold uppercase text-primary"><LockKeyhole className="size-3"/> Evidence locked</span> : null}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button type="button" disabled={demoAccount} onClick={() => setSide("buy")} className={cn("rounded-md border p-2.5 text-xs font-semibold disabled:cursor-not-allowed", ticketSide === "buy" ? "border-primary text-primary" : "border-border", demoAccount && ticketSide !== "buy" && "opacity-40")}>BUY</button>
+        <button type="button" disabled={demoAccount} onClick={() => setSide("sell")} className={cn("rounded-md border p-2.5 text-xs font-semibold disabled:cursor-not-allowed", ticketSide === "sell" ? "border-primary text-primary" : "border-border", demoAccount && ticketSide !== "sell" && "opacity-40")}>SELL</button>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+        <label className="block text-[11px] text-muted-foreground">Amount / size<input type="number" step="any" min="0" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1 w-full rounded-md border bg-background p-2 text-xs text-foreground"/></label>
+        <TicketPlanField label="Entry" value={ticketEntry} locked={demoAccount} onChange={setEntry}/>
+        <TicketPlanField label="Stop loss" value={ticketStopLoss} locked={demoAccount} onChange={setStopLoss}/>
+        <TicketPlanField label="Take profit" value={ticketTakeProfit} locked={demoAccount} onChange={setTakeProfit}/>
+      </div>
+      <div className="mt-3 rounded-md border border-border p-2 text-[10px] text-muted-foreground">
+        {!selectedAccount ? "No trading account configured." : selectedAccount.account_environment === "live" ? "LIVE account: submission creates an order awaiting explicit confirmation." : demoExecutable ? `DEMO: Cossa ${ticketSide.toUpperCase()} plan is locked; only size is editable. Server re-qualifies evidence and confirms a fresh Deriv tick.` : "DEMO: current evidence is WAIT/REJECTED or missing. Execution fails closed."}
+      </div>
+      {!selectedAccount ? (
+        <Link to="/demo-setup" className="mt-3 flex w-full justify-center rounded-md border border-border-gold px-4 py-2.5 text-xs font-semibold text-primary">Set up Demo account</Link>
+      ) : (
+        <button type="button" disabled={submitting || !instrumentReady || selectedAccount.emergency_stop || (demoAccount && !demoExecutable)} onClick={onSubmit} className="mt-3 w-full rounded-md bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Submitting…" : `Submit ${ticketSide.toUpperCase()}`}</button>
+      )}
+      {result ? <div className={cn("mt-2 rounded-md border p-2 text-[10px]", result.ok ? "border-primary/40 text-primary" : "border-destructive/40 text-destructive")}>{result.message}</div> : null}
+    </aside>
+  );
+}
+
+function TicketPlanField({ label, value, locked, onChange }: { label: string; value: string; locked: boolean; onChange: (value: string) => void }) {
+  return (
+    <label className="block text-[11px] text-muted-foreground">
+      <span className="flex items-center justify-between gap-2">{label}{locked ? <span className="text-[9px] uppercase text-primary">Cossa evidence</span> : null}</span>
+      <input type="number" step="any" value={value} disabled={locked} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-md border bg-background p-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-80"/>
     </label>
   );
 }
