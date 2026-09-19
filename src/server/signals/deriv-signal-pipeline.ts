@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { analyzeMarketStructure, type MarketStructureAnalysis } from "../../lib/market-structure";
 import { fetchDerivCandles, type DerivCandle } from "../market-data/deriv";
 import { evaluateDataConfidence, type DataConfidenceResult } from "./data-confidence";
 import { buildTradePlan, type Candle, type TradePlan } from "./deterministic-engine";
@@ -38,6 +39,7 @@ export type SignalEvidence = {
   dataTo: string;
   candleCount: number;
   dataConfidence: DataConfidenceResult;
+  marketStructure: MarketStructureAnalysis;
   plan: TradePlan;
 };
 
@@ -170,6 +172,7 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
     now,
     maximumAgeMs: maximumCandleAgeMs,
   });
+  const marketStructure = analyzeMarketStructure(analysisWindow);
   const plan = buildTradePlan(analysisWindow);
   const fp = fingerprint(input, analysisWindow);
   const evidence: SignalEvidence = {
@@ -184,6 +187,7 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
     dataTo: analysisWindow.at(-1)!.closeTime.toISOString(),
     candleCount: analysisWindow.length,
     dataConfidence,
+    marketStructure,
     plan,
   };
 
