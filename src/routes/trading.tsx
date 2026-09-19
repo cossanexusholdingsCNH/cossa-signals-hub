@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, ShieldCheck, WalletCards } from "lucide-react";
 
 import { RequireAuth } from "@/components/layout/RequireAuth";
-import { AppShell } from "@/components/layout/AppShell";
 import { MarketExecutionChart } from "@/components/trading/MarketExecutionChart";
 import { PositionLifecyclePanel } from "@/components/trading/PositionLifecyclePanel";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,9 +15,7 @@ export const Route = createFileRoute("/trading")({ component: TradingPage });
 function TradingPage() {
   return (
     <RequireAuth>
-      <AppShell>
-        <TradingWorkspace />
-      </AppShell>
+      <TradingWorkspace />
     </RequireAuth>
   );
 }
@@ -28,10 +25,17 @@ function TradingWorkspace() {
   const { data: instruments = [] } = useInstruments();
   const { data: signals = [] } = useLiveSignals(100);
   const enabled = instruments.filter((item) => item.instrument_enabled !== false);
+  const preferredSignal = useMemo(
+    () =>
+      signals.find((signal) =>
+        enabled.some((item) => item.symbol === signal.instrument?.symbol),
+      ),
+    [enabled, signals],
+  );
   const [symbol, setSymbol] = useState("");
-  const selectedSymbol = symbol || enabled[0]?.symbol || "";
+  const selectedSymbol = symbol || preferredSignal?.instrument?.symbol || enabled[0]?.symbol || "";
   const instrument = enabled.find((item) => item.symbol === selectedSymbol);
-  const [timeframe, setTimeframe] = useState("5m");
+  const [timeframe, setTimeframe] = useState("");
   const [accountId, setAccountId] = useState("");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("1");
@@ -40,6 +44,12 @@ function TradingWorkspace() {
   const [takeProfit, setTakeProfit] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const activeSignal = useMemo(
+    () => signals.find((signal) => signal.instrument?.symbol === selectedSymbol),
+    [signals, selectedSymbol],
+  );
+  const selectedTimeframe = timeframe || activeSignal?.timeframe || instrument?.timeframe_default || "5m";
 
   const accounts = useQuery({
     queryKey: ["trading_accounts", user?.id],
@@ -58,7 +68,7 @@ function TradingWorkspace() {
   });
 
   const candles = useQuery({
-    queryKey: ["market_candles", instrument?.id, timeframe],
+    queryKey: ["market_candles", instrument?.id, selectedTimeframe],
     enabled: Boolean(instrument?.id),
     refetchInterval: 15_000,
     queryFn: async () => {
@@ -66,7 +76,7 @@ function TradingWorkspace() {
         .from("market_candles")
         .select("open_time,close")
         .eq("instrument_id", instrument!.id)
-        .eq("timeframe", timeframe)
+        .eq("timeframe", selectedTimeframe)
         .order("open_time", { ascending: false })
         .limit(180);
       if (error) throw error;
@@ -79,16 +89,22 @@ function TradingWorkspace() {
 
   const selectedAccount =
     (accounts.data ?? []).find((account) => account.id === accountId) ?? accounts.data?.[0];
-  const activeSignal = useMemo(
-    () => signals.find((signal) => signal.instrument?.symbol === selectedSymbol),
-    [signals, selectedSymbol],
-  );
   const currentPrice =
     Number(instrument?.current_price ?? candles.data?.at(-1)?.close ?? 0) || null;
+
+  function selectInstrument(nextSymbol: string) {
+    setSymbol(nextSymbol);
+    setTimeframe("");
+    setEntry("");
+    setStopLoss("");
+    setTakeProfit("");
+    setResult(null);
+  }
 
   function loadSignalPlan() {
     if (!activeSignal) return;
     setSide(activeSignal.direction === "sell" ? "sell" : "buy");
+    setTimeframe(activeSignal.timeframe || selectedTimeframe);
     setEntry(String(activeSignal.entry_price ?? currentPrice ?? ""));
     setStopLoss(String(activeSignal.stop_loss ?? ""));
     setTakeProfit(String(activeSignal.take_profit_1 ?? ""));
@@ -97,7 +113,14 @@ function TradingWorkspace() {
   async function submitOrder() {
     setResult(null);
     if (!instrument?.id || !selectedAccount?.id) {
-      setResult({ ok: false, message: "Select an instrument and trading account first." });
+      setResult({ ok: false, message: "Set up a Demo account and select an instrument first." });
+      return;
+    }
+    if (selectedAccount.account_environment === "demo" && !activeSignal) {
+      setResult({
+        ok: false,
+        message: "Demo auto execution requires a current Cossa signal. Choose an instrument with an active signal.",
+      });
       return;
     }
     const requestedEntry = Number(entry || currentPrice);
@@ -197,6 +220,25 @@ function TradingWorkspace() {
           <ShieldCheck className="size-4 text-primary" /> Server-controlled execution
         </div>
       </div>
+
+      {!accounts.isLoading && (accounts.data ?? []).length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-gold/50 bg-card p-4">
+          <div>
+            <p className="text-sm font-semibold">Demo account required</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Create the virtual Deriv Demo account first so the risk engine has a balance,
+              snapshot and daily risk baseline.
+            </p>
+          </div>
+          <Link
+            to="/demo-setup"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+          >
+            Set up Demo account
+          </Link>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3">
@@ -205,7 +247,7 @@ function TradingWorkspace() {
               <select
                 className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
                 value={selectedSymbol}
-                onChange={(e) => setSymbol(e.target.value)}
+                onChange={(event) => selectInstrument(event.target.value)}
               >
                 {enabled.map((item) => (
                   <option key={item.id} value={item.symbol}>
@@ -218,8 +260,8 @@ function TradingWorkspace() {
               Timeframe
               <select
                 className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
-                value={timeframe}
-                onChange={(e) => setTimeframe(e.target.value)}
+                value={selectedTimeframe}
+                onChange={(event) => setTimeframe(event.target.value)}
               >
                 {["1m", "5m", "15m", "30m", "1h", "4h"].map((value) => (
                   <option key={value}>{value}</option>
@@ -231,8 +273,9 @@ function TradingWorkspace() {
               <select
                 className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
                 value={selectedAccount?.id ?? ""}
-                onChange={(e) => setAccountId(e.target.value)}
+                onChange={(event) => setAccountId(event.target.value)}
               >
+                {(accounts.data ?? []).length === 0 ? <option value="">No account configured</option> : null}
                 {(accounts.data ?? []).map((account) => (
                   <option key={account.id} value={account.id}>
                     {account.account_label} · {account.account_environment.toUpperCase()}
@@ -241,15 +284,24 @@ function TradingWorkspace() {
               </select>
             </label>
           </div>
+
           <MarketExecutionChart
             symbol={selectedSymbol || "Market"}
-            timeframe={timeframe}
+            timeframe={selectedTimeframe}
             data={candles.data ?? []}
             currentPrice={currentPrice}
             entryPrice={Number(entry) || activeSignal?.entry_price || null}
             stopLoss={Number(stopLoss) || activeSignal?.stop_loss || null}
             takeProfit1={Number(takeProfit) || activeSignal?.take_profit_1 || null}
           />
+
+          {candles.isFetched && (candles.data ?? []).length === 0 ? (
+            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+              No stored {selectedTimeframe} candles are available for {selectedSymbol || "this instrument"} yet.
+              Choose another timeframe or an instrument with a current Cossa signal.
+            </div>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2">
             <section className="rounded-xl border bg-card p-4">
               <div className="flex items-center gap-2">
@@ -264,9 +316,7 @@ function TradingWorkspace() {
                     {activeSignal.confidence_score}% confidence
                   </p>
                   <p className="text-muted-foreground">
-                    {activeSignal.ai_summary ??
-                      activeSignal.signal_reason ??
-                      "Signal plan available."}
+                    {activeSignal.ai_summary ?? activeSignal.signal_reason ?? "Signal plan available."}
                   </p>
                   <button
                     type="button"
@@ -277,12 +327,21 @@ function TradingWorkspace() {
                   </button>
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  No active signal for this instrument. Manual analysis remains available from the
-                  chart.
-                </p>
+                <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                  <p>No active Cossa signal for this instrument.</p>
+                  {preferredSignal?.instrument?.symbol ? (
+                    <button
+                      type="button"
+                      onClick={() => selectInstrument(preferredSignal.instrument!.symbol)}
+                      className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
+                    >
+                      Open {preferredSignal.instrument.display_name ?? preferredSignal.instrument.symbol} signal
+                    </button>
+                  ) : null}
+                </div>
               )}
             </section>
+
             <section className="rounded-xl border bg-card p-4">
               <div className="flex items-center gap-2">
                 <WalletCards className="size-4 text-primary" />
@@ -301,9 +360,7 @@ function TradingWorkspace() {
                 </p>
                 <p>
                   Mode:{" "}
-                  <strong className="text-foreground">
-                    {selectedAccount?.execution_mode ?? "—"}
-                  </strong>
+                  <strong className="text-foreground">{selectedAccount?.execution_mode ?? "—"}</strong>
                 </p>
                 <p>
                   Emergency stop:{" "}
@@ -312,9 +369,18 @@ function TradingWorkspace() {
                   </strong>
                 </p>
               </div>
+              {!selectedAccount ? (
+                <Link
+                  to="/demo-setup"
+                  className="mt-3 inline-flex rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
+                >
+                  Set up Deriv Demo
+                </Link>
+              ) : null}
             </section>
           </div>
         </div>
+
         <aside className="rounded-xl border bg-card p-4 xl:sticky xl:top-20 xl:self-start">
           <h2 className="text-lg font-semibold">Order ticket</h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -349,27 +415,43 @@ function TradingWorkspace() {
                   type="number"
                   step="any"
                   value={field.value}
-                  onChange={(e) => field.set(e.target.value)}
+                  onChange={(event) => field.set(event.target.value)}
                   className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground"
                 />
               </label>
             ))}
           </div>
           <div className="mt-4 rounded-lg border border-border p-3 text-xs text-muted-foreground">
-            {selectedAccount?.account_environment === "live"
-              ? "LIVE account selected. Submission creates an order awaiting explicit confirmation."
-              : "DEMO account selected. Submission runs through server-side risk evaluation and durable fill lifecycle."}
+            {!selectedAccount
+              ? "No trading account configured. Set up the Deriv Demo account before submitting orders."
+              : selectedAccount.account_environment === "live"
+                ? "LIVE account selected. Submission creates an order awaiting explicit confirmation."
+                : activeSignal
+                  ? "DEMO account selected. Submission runs through signal-quality and risk evaluation before the durable fill lifecycle."
+                  : "DEMO account selected, but this instrument has no current Cossa signal. Choose an active signal before submitting."}
           </div>
-          <button
-            type="button"
-            disabled={
-              submitting || !selectedAccount || !instrument || selectedAccount.emergency_stop
-            }
-            onClick={() => void submitOrder()}
-            className="mt-4 w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {submitting ? "Submitting…" : `Submit ${side.toUpperCase()}`}
-          </button>
+          {!selectedAccount ? (
+            <Link
+              to="/demo-setup"
+              className="mt-4 flex w-full justify-center rounded-md border border-border-gold px-4 py-3 text-sm font-semibold text-primary"
+            >
+              Set up Demo account
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled={
+                submitting ||
+                !instrument ||
+                selectedAccount.emergency_stop ||
+                (selectedAccount.account_environment === "demo" && !activeSignal)
+              }
+              onClick={() => void submitOrder()}
+              className="mt-4 w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? "Submitting…" : `Submit ${side.toUpperCase()}`}
+            </button>
+          )}
           {result ? (
             <div
               className={`mt-3 rounded-md border p-3 text-xs ${result.ok ? "border-primary/40 text-primary" : "border-destructive/40 text-destructive"}`}

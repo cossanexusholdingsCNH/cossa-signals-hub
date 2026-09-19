@@ -2,7 +2,6 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { RequireAuth } from "@/components/layout/RequireAuth";
-import { AppShell } from "@/components/layout/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/demo-setup")({ component: DemoSetupPage });
@@ -10,9 +9,7 @@ export const Route = createFileRoute("/demo-setup")({ component: DemoSetupPage }
 function DemoSetupPage() {
   return (
     <RequireAuth>
-      <AppShell>
-        <DemoSetup />
-      </AppShell>
+      <DemoSetup />
     </RequireAuth>
   );
 }
