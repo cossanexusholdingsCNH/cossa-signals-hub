@@ -49,8 +49,7 @@ export type ExecutionRiskDecision = {
 };
 
 const finitePositive = (value: number) => Number.isFinite(value) && value > 0;
-const finitePercentage = (value: number) =>
-  Number.isFinite(value) && value >= 0 && value <= 100;
+const finitePercentage = (value: number) => Number.isFinite(value) && value >= 0 && value <= 100;
 
 function floorToStep(value: number, step: number) {
   const precision = Math.max(0, (String(step).split(".")[1] ?? "").length);

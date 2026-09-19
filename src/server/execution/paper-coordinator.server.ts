@@ -137,10 +137,7 @@ export async function evaluatePaperExecution(
       ? order.metadata
       : {};
   const confidence = requirePercentage(metadata["confidence"] ?? 0, "signal confidence");
-  const dataConfidence = requirePercentage(
-    metadata["data_confidence"] ?? 0,
-    "data confidence",
-  );
+  const dataConfidence = requirePercentage(metadata["data_confidence"] ?? 0, "data confidence");
   const marketGeneratedAt = metadata["generated_at"] ?? metadata["signal_generated_at"];
   const marketDataAgeMs =
     typeof marketGeneratedAt === "string"
