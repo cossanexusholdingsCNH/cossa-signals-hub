@@ -39,6 +39,22 @@ export const Route = createFileRoute("/api/execution-order")({
 
           const body = (await request.json()) as Record<string, unknown>;
           const tradingAccountId = String(body.tradingAccountId ?? "");
+          if (!tradingAccountId)
+            return json({ ok: false, error: "Trading account is required" }, 400);
+
+          const account = await supabaseAdmin
+            .from("trading_accounts")
+            .select("id,account_environment")
+            .eq("id", tradingAccountId)
+            .eq("user_id", auth.user.id)
+            .single();
+          if (account.error || !account.data)
+            return json({ ok: false, error: "Trading account was not found" }, 404);
+
+          if (account.data.account_environment === "demo") {
+            await refreshDemoRiskState(tradingAccountId, auth.user.id);
+          }
+
           const order = await createManualOrderIntent({
             userId: auth.user.id,
             tradingAccountId,
@@ -53,7 +69,6 @@ export const Route = createFileRoute("/api/execution-order")({
           });
 
           if (order.execution_mode === "paper_auto") {
-            await refreshDemoRiskState(tradingAccountId, auth.user.id);
             const decision = await evaluatePaperExecution({
               orderId: order.id,
               userId: auth.user.id,
