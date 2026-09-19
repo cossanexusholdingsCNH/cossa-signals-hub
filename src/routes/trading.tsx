@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, ShieldCheck, WalletCards } from "lucide-react";
+import { Activity, LockKeyhole, ShieldCheck, WalletCards } from "lucide-react";
 
 import { RequireAuth } from "@/components/layout/RequireAuth";
 import { MarketExecutionChart } from "@/components/trading/MarketExecutionChart";
@@ -66,7 +66,9 @@ function TradingWorkspace() {
     ? tradable.find((item) => item.symbol === search.symbol)
     : undefined;
   const requestedTimeframe =
-    requestedInstrument && search.timeframe && TIMEFRAMES.includes(search.timeframe as (typeof TIMEFRAMES)[number])
+    requestedInstrument &&
+    search.timeframe &&
+    TIMEFRAMES.includes(search.timeframe as (typeof TIMEFRAMES)[number])
       ? search.timeframe
       : undefined;
 
@@ -85,9 +87,10 @@ function TradingWorkspace() {
     symbol || requestedInstrument?.symbol || preferredOpportunity?.symbol || tradable[0]?.symbol || "";
   const instrument = tradable.find((item) => item.symbol === selectedSymbol);
   const symbolEvidence = currentEvidence.filter((item) => item.symbol === selectedSymbol);
-  const evidenceDefault = symbolEvidence.find(
-    (item) => item.qualified && (item.direction === "buy" || item.direction === "sell"),
-  ) ?? symbolEvidence[0];
+  const evidenceDefault =
+    symbolEvidence.find(
+      (item) => item.qualified && (item.direction === "buy" || item.direction === "sell"),
+    ) ?? symbolEvidence[0];
   const selectedTimeframe =
     timeframe || requestedTimeframe || evidenceDefault?.timeframe || instrument?.timeframe_default || "5m";
   const activeOpportunity =
@@ -103,7 +106,9 @@ function TradingWorkspace() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("trading_accounts")
-        .select("id,provider,account_label,account_environment,execution_mode,enabled,currency,emergency_stop")
+        .select(
+          "id,provider,account_label,account_environment,execution_mode,enabled,currency,emergency_stop",
+        )
         .eq("user_id", user!.id)
         .order("account_environment");
       if (error) throw error;
@@ -131,8 +136,9 @@ function TradingWorkspace() {
           supportsStreaming?: boolean;
         } | null;
       };
-      if (!response.ok || !payload.ok)
+      if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Unable to load stream config");
+      }
       return payload.stream ?? null;
     },
   });
@@ -179,6 +185,39 @@ function TradingWorkspace() {
     liveTick.price ??
     (Number.isFinite(fallbackPrice) && fallbackPrice > 0 ? fallbackPrice : null);
 
+  const executableEvidence =
+    activeOpportunity &&
+    activeOpportunity.qualified &&
+    (activeOpportunity.direction === "buy" || activeOpportunity.direction === "sell")
+      ? activeOpportunity
+      : null;
+  const demoAccount = selectedAccount?.account_environment === "demo";
+  const demoEvidenceLocked = Boolean(demoAccount && executableEvidence);
+
+  const ticketSide: "buy" | "sell" =
+    demoEvidenceLocked && executableEvidence
+      ? executableEvidence.direction
+      : side;
+  const ticketEntry = demoAccount
+    ? String(executableEvidence?.entry ?? "")
+    : entry;
+  const ticketStopLoss = demoAccount
+    ? String(executableEvidence?.stopLoss ?? "")
+    : stopLoss;
+  const ticketTakeProfit = demoAccount
+    ? String(executableEvidence?.takeProfit1 ?? "")
+    : takeProfit;
+
+  const chartEntry = demoAccount
+    ? executableEvidence?.entry ?? null
+    : Number(entry) || activeOpportunity?.entry || null;
+  const chartStopLoss = demoAccount
+    ? executableEvidence?.stopLoss ?? null
+    : Number(stopLoss) || activeOpportunity?.stopLoss || null;
+  const chartTakeProfit = demoAccount
+    ? executableEvidence?.takeProfit1 ?? null
+    : Number(takeProfit) || activeOpportunity?.takeProfit1 || null;
+
   function selectInstrument(nextSymbol: string) {
     setSymbol(nextSymbol);
     setTimeframe("");
@@ -206,25 +245,26 @@ function TradingWorkspace() {
       return;
     }
 
-    const executableEvidence =
-      activeOpportunity &&
-      activeOpportunity.qualified &&
-      (activeOpportunity.direction === "buy" || activeOpportunity.direction === "sell")
-        ? activeOpportunity
-        : null;
-
-    if (selectedAccount.account_environment === "demo" && !executableEvidence) {
+    if (demoAccount && !executableEvidence) {
       setResult({
         ok: false,
-        message: "Demo execution requires a current qualified BUY/SELL Cossa evidence set for this instrument and timeframe.",
+        message:
+          "Demo execution requires a current qualified BUY/SELL Cossa evidence set for this instrument and timeframe.",
       });
       return;
     }
 
-    const requestedEntry = Number(entry || executableEvidence?.entry || currentPrice);
+    const requestedEntry = Number(
+      demoAccount ? executableEvidence?.entry : entry || executableEvidence?.entry || currentPrice,
+    );
     const requestedAmount = Number(amount);
-    const sl = Number(stopLoss || executableEvidence?.stopLoss);
-    const tp = Number(takeProfit || executableEvidence?.takeProfit1);
+    const sl = Number(
+      demoAccount ? executableEvidence?.stopLoss : stopLoss || executableEvidence?.stopLoss,
+    );
+    const tp = Number(
+      demoAccount ? executableEvidence?.takeProfit1 : takeProfit || executableEvidence?.takeProfit1,
+    );
+
     if (![requestedEntry, requestedAmount, sl, tp].every((value) => Number.isFinite(value) && value > 0)) {
       setResult({
         ok: false,
@@ -247,7 +287,7 @@ function TradingWorkspace() {
         body: JSON.stringify({
           tradingAccountId: selectedAccount.id,
           instrumentId: instrument.id,
-          side,
+          side: ticketSide,
           requestedAmount,
           requestedEntry,
           stopLoss: sl,
@@ -266,8 +306,9 @@ function TradingWorkspace() {
           rejectionReasons?: string[];
         };
       };
-      if (!response.ok || !payload.ok)
+      if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Order submission failed");
+      }
 
       if (payload.decision?.confirmationRequired) {
         setResult({
@@ -302,19 +343,19 @@ function TradingWorkspace() {
     }
   }
 
-  const demoExecutable = Boolean(
-    activeOpportunity?.qualified &&
-      (activeOpportunity.direction === "buy" || activeOpportunity.direction === "sell"),
-  );
+  const demoExecutable = Boolean(executableEvidence);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Execution workspace</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+            Execution workspace
+          </p>
           <h1 className="mt-1 text-2xl font-semibold">Cossa Trading Terminal</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Verified live Deriv charting and immutable Cossa evidence. Demo execution remains server-controlled and risk-gated.
+            Verified live Deriv charting and immutable Cossa evidence. Demo execution remains
+            server-controlled and risk-gated.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
@@ -324,7 +365,9 @@ function TradingWorkspace() {
 
       {rejectedDeepLink ? (
         <div className="rounded-xl border border-caution/40 bg-caution/5 p-4 text-xs text-caution">
-          {search.symbol} is not currently available through the verified live Deriv execution feed. The terminal opened {selectedSymbol || "the next verified live market"} instead. No instrument is silently substituted as if it were {search.symbol}.
+          {search.symbol} is not currently available through the verified live Deriv execution
+          feed. The terminal opened {selectedSymbol || "the next verified live market"} instead.
+          No instrument is silently substituted as if it were {search.symbol}.
         </div>
       ) : null}
 
@@ -332,32 +375,72 @@ function TradingWorkspace() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-gold/50 bg-card p-4">
           <div>
             <p className="text-sm font-semibold">Demo account required</p>
-            <p className="mt-1 text-xs text-muted-foreground">Create the virtual Deriv Demo account first so the risk engine has a balance, snapshot and daily risk baseline.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Create the virtual Deriv Demo account first so the risk engine has a balance,
+              snapshot and daily risk baseline.
+            </p>
           </div>
-          <Link to="/demo-setup" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Set up Demo account</Link>
+          <Link
+            to="/demo-setup"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+          >
+            Set up Demo account
+          </Link>
         </div>
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3">
-            <label className="text-xs text-muted-foreground">Instrument
-              <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground" value={selectedSymbol} onChange={(event) => selectInstrument(event.target.value)}>
+            <label className="text-xs text-muted-foreground">
+              Instrument
+              <select
+                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
+                value={selectedSymbol}
+                onChange={(event) => selectInstrument(event.target.value)}
+              >
                 {tradable.map((item) => (
-                  <option key={item.id} value={item.symbol}>{item.display_name} · LIVE</option>
+                  <option key={item.id} value={item.symbol}>
+                    {item.display_name} · LIVE
+                  </option>
                 ))}
               </select>
             </label>
-            <label className="text-xs text-muted-foreground">Timeframe
-              <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground" value={selectedTimeframe} onChange={(event) => setTimeframe(event.target.value)}>
-                {TIMEFRAMES.map((value) => <option key={value}>{value}</option>)}
+            <label className="text-xs text-muted-foreground">
+              Timeframe
+              <select
+                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
+                value={selectedTimeframe}
+                onChange={(event) => {
+                  setTimeframe(event.target.value);
+                  setEntry("");
+                  setStopLoss("");
+                  setTakeProfit("");
+                  setResult(null);
+                }}
+              >
+                {TIMEFRAMES.map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
               </select>
             </label>
-            <label className="text-xs text-muted-foreground">Trading account
-              <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground" value={selectedAccount?.id ?? ""} onChange={(event) => setAccountId(event.target.value)}>
-                {(accounts.data ?? []).length === 0 ? <option value="">No account configured</option> : null}
+            <label className="text-xs text-muted-foreground">
+              Trading account
+              <select
+                className="mt-1 w-full rounded-md border bg-background p-2 text-sm text-foreground"
+                value={selectedAccount?.id ?? ""}
+                onChange={(event) => {
+                  setAccountId(event.target.value);
+                  setResult(null);
+                }}
+              >
+                {(accounts.data ?? []).length === 0 ? (
+                  <option value="">No account configured</option>
+                ) : null}
                 {(accounts.data ?? []).map((account) => (
-                  <option key={account.id} value={account.id}>{account.account_label} · {account.account_environment.toUpperCase()}</option>
+                  <option key={account.id} value={account.id}>
+                    {account.account_label} · {account.account_environment.toUpperCase()}
+                  </option>
                 ))}
               </select>
             </label>
@@ -372,93 +455,265 @@ function TradingWorkspace() {
             liveConnected={liveTick.connected}
             bid={liveTick.bid}
             ask={liveTick.ask}
-            entryPrice={Number(entry) || activeOpportunity?.entry || null}
-            stopLoss={Number(stopLoss) || activeOpportunity?.stopLoss || null}
-            takeProfit1={Number(takeProfit) || activeOpportunity?.takeProfit1 || null}
+            entryPrice={chartEntry}
+            stopLoss={chartStopLoss}
+            takeProfit1={chartTakeProfit}
           />
 
           {streamConfig.data?.provider === "deriv" && liveTick.error ? (
-            <div className="rounded-lg border border-destructive/40 p-3 text-xs text-destructive">Live Deriv stream: {liveTick.error}</div>
+            <div className="rounded-lg border border-destructive/40 p-3 text-xs text-destructive">
+              Live Deriv stream: {liveTick.error}
+            </div>
           ) : null}
           {candles.isFetched && (candles.data ?? []).length === 0 ? (
-            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">No stored {selectedTimeframe} OHLC candles are available for {selectedSymbol || "this instrument"}. Choose another available timeframe.</div>
+            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+              No stored {selectedTimeframe} OHLC candles are available for {selectedSymbol || "this instrument"}.
+              Choose another available timeframe.
+            </div>
           ) : null}
 
           <div className="grid gap-4 md:grid-cols-2">
             <section className="rounded-xl border bg-card p-4">
-              <div className="flex items-center gap-2"><Activity className="size-4 text-primary" /><h2 className="font-semibold">Cossa analysis</h2></div>
+              <div className="flex items-center gap-2">
+                <Activity className="size-4 text-primary" />
+                <h2 className="font-semibold">Cossa analysis</h2>
+              </div>
               {activeOpportunity ? (
                 <div className="mt-3 space-y-2 text-sm">
-                  <p><span className="text-muted-foreground">Decision:</span> <strong className="uppercase">{activeOpportunity.direction.replace("_", " ")}</strong> · {activeOpportunity.confidenceScore}% signal confidence</p>
-                  <p><span className="text-muted-foreground">Data confidence:</span> <strong>{activeOpportunity.dataConfidenceScore ?? "—"}%</strong> · R:R {activeOpportunity.riskRewardRatio?.toFixed(2) ?? "—"}</p>
-                  <p><span className="text-muted-foreground">Structure:</span> {activeOpportunity.structure?.trend ?? "unavailable"} · breakout {activeOpportunity.structure?.breakout ?? "—"}</p>
-                  {!activeOpportunity.qualified ? <p className="text-caution">Not executable: {activeOpportunity.qualificationReasons.slice(0, 2).join(" · ")}</p> : null}
-                  {activeOpportunity.direction === "buy" || activeOpportunity.direction === "sell" ? (
-                    <button type="button" onClick={loadEvidencePlan} className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary">Load current evidence into order ticket</button>
+                  <p>
+                    <span className="text-muted-foreground">Decision:</span>{" "}
+                    <strong className="uppercase">{activeOpportunity.direction.replace("_", " ")}</strong>{" "}
+                    · {activeOpportunity.confidenceScore}% signal confidence
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Data confidence:</span>{" "}
+                    <strong>{activeOpportunity.dataConfidenceScore ?? "—"}%</strong> · R:R{" "}
+                    {activeOpportunity.riskRewardRatio?.toFixed(2) ?? "—"}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Structure:</span>{" "}
+                    {activeOpportunity.structure?.trend ?? "unavailable"} · breakout{" "}
+                    {activeOpportunity.structure?.breakout ?? "—"}
+                  </p>
+                  {!activeOpportunity.qualified ? (
+                    <p className="text-caution">
+                      Not executable: {activeOpportunity.qualificationReasons.slice(0, 2).join(" · ")}
+                    </p>
+                  ) : null}
+                  {demoEvidenceLocked ? (
+                    <p className="inline-flex items-center gap-1.5 rounded-md border border-border-gold/50 px-3 py-2 text-xs font-medium text-primary">
+                      <LockKeyhole className="size-3.5" /> Qualified plan auto-loaded into Demo ticket
+                    </p>
+                  ) : activeOpportunity.direction === "buy" || activeOpportunity.direction === "sell" ? (
+                    <button
+                      type="button"
+                      onClick={loadEvidencePlan}
+                      className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
+                    >
+                      Load current evidence into order ticket
+                    </button>
                   ) : null}
                 </div>
               ) : (
                 <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                   <p>No current Cossa evidence for this instrument/timeframe yet.</p>
                   {preferredOpportunity ? (
-                    <button type="button" onClick={() => selectInstrument(preferredOpportunity.symbol)} className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary">Open {preferredOpportunity.displayName}</button>
+                    <button
+                      type="button"
+                      onClick={() => selectInstrument(preferredOpportunity.symbol)}
+                      className="rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
+                    >
+                      Open {preferredOpportunity.displayName}
+                    </button>
                   ) : null}
                 </div>
               )}
             </section>
 
             <section className="rounded-xl border bg-card p-4">
-              <div className="flex items-center gap-2"><WalletCards className="size-4 text-primary" /><h2 className="font-semibold">Account state</h2></div>
-              <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-                <p>Environment: <strong className="text-foreground">{selectedAccount?.account_environment?.toUpperCase() ?? "Not configured"}</strong></p>
-                <p>Provider: <strong className="text-foreground">{selectedAccount?.provider ?? "—"}</strong></p>
-                <p>Mode: <strong className="text-foreground">{selectedAccount?.execution_mode ?? "—"}</strong></p>
-                <p>Emergency stop: <strong className="text-foreground">{selectedAccount?.emergency_stop ? "ACTIVE" : "Clear"}</strong></p>
+              <div className="flex items-center gap-2">
+                <WalletCards className="size-4 text-primary" />
+                <h2 className="font-semibold">Account state</h2>
               </div>
-              {!selectedAccount ? <Link to="/demo-setup" className="mt-3 inline-flex rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary">Set up Deriv Demo</Link> : null}
+              <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                <p>
+                  Environment:{" "}
+                  <strong className="text-foreground">
+                    {selectedAccount?.account_environment?.toUpperCase() ?? "Not configured"}
+                  </strong>
+                </p>
+                <p>
+                  Provider: <strong className="text-foreground">{selectedAccount?.provider ?? "—"}</strong>
+                </p>
+                <p>
+                  Mode: <strong className="text-foreground">{selectedAccount?.execution_mode ?? "—"}</strong>
+                </p>
+                <p>
+                  Emergency stop:{" "}
+                  <strong className="text-foreground">
+                    {selectedAccount?.emergency_stop ? "ACTIVE" : "Clear"}
+                  </strong>
+                </p>
+              </div>
+              {!selectedAccount ? (
+                <Link
+                  to="/demo-setup"
+                  className="mt-3 inline-flex rounded-md border border-border-gold px-3 py-2 text-xs font-medium text-primary"
+                >
+                  Set up Deriv Demo
+                </Link>
+              ) : null}
             </section>
           </div>
         </div>
 
         <aside className="rounded-xl border bg-card p-4 xl:sticky xl:top-20 xl:self-start">
-          <h2 className="text-lg font-semibold">Order ticket</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Demo trades use qualified immutable evidence plus a fresh server-side Deriv tick.</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Order ticket</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Demo trades use qualified immutable evidence plus a fresh server-side Deriv tick.
+              </p>
+            </div>
+            {demoEvidenceLocked ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border-gold/50 px-2 py-1 text-[10px] font-semibold uppercase text-primary">
+                <LockKeyhole className="size-3" /> Evidence locked
+              </span>
+            ) : null}
+          </div>
+
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setSide("buy")} className={`rounded-md border p-3 text-sm font-semibold ${side === "buy" ? "border-primary text-primary" : "border-border"}`}>BUY</button>
-            <button type="button" onClick={() => setSide("sell")} className={`rounded-md border p-3 text-sm font-semibold ${side === "sell" ? "border-primary text-primary" : "border-border"}`}>SELL</button>
+            <button
+              type="button"
+              disabled={demoAccount}
+              onClick={() => setSide("buy")}
+              className={`rounded-md border p-3 text-sm font-semibold disabled:cursor-not-allowed ${ticketSide === "buy" ? "border-primary text-primary" : "border-border"} ${demoAccount && ticketSide !== "buy" ? "opacity-40" : ""}`}
+            >
+              BUY
+            </button>
+            <button
+              type="button"
+              disabled={demoAccount}
+              onClick={() => setSide("sell")}
+              className={`rounded-md border p-3 text-sm font-semibold disabled:cursor-not-allowed ${ticketSide === "sell" ? "border-primary text-primary" : "border-border"} ${demoAccount && ticketSide !== "sell" ? "opacity-40" : ""}`}
+            >
+              SELL
+            </button>
           </div>
+
           <div className="mt-4 space-y-3">
-            {[
-              { label: "Amount / size", value: amount, set: setAmount },
-              { label: "Entry", value: entry, set: setEntry },
-              { label: "Stop loss", value: stopLoss, set: setStopLoss },
-              { label: "Take profit", value: takeProfit, set: setTakeProfit },
-            ].map((field) => (
-              <label key={field.label} className="block text-xs text-muted-foreground">{field.label}
-                <input type="number" step="any" value={field.value} onChange={(event) => field.set(event.target.value)} className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground" />
-              </label>
-            ))}
+            <label className="block text-xs text-muted-foreground">
+              Amount / size
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground"
+              />
+            </label>
+            <TicketPlanField
+              label="Entry"
+              value={ticketEntry}
+              locked={Boolean(demoAccount)}
+              onChange={setEntry}
+            />
+            <TicketPlanField
+              label="Stop loss"
+              value={ticketStopLoss}
+              locked={Boolean(demoAccount)}
+              onChange={setStopLoss}
+            />
+            <TicketPlanField
+              label="Take profit"
+              value={ticketTakeProfit}
+              locked={Boolean(demoAccount)}
+              onChange={setTakeProfit}
+            />
           </div>
+
           <div className="mt-4 rounded-lg border border-border p-3 text-xs text-muted-foreground">
             {!selectedAccount
               ? "No trading account configured. Set up the Deriv Demo account before submitting orders."
               : selectedAccount.account_environment === "live"
                 ? "LIVE account selected. Submission creates an order awaiting explicit confirmation."
                 : demoExecutable
-                  ? "DEMO account selected. Current qualified Cossa evidence is available; the server will independently re-qualify it and verify a fresh Deriv tick before execution."
+                  ? `DEMO account selected. Cossa ${ticketSide.toUpperCase()} plan is locked into the ticket; only size is editable. The server will independently re-qualify the evidence and verify a fresh Deriv tick before execution.`
                   : "DEMO account selected, but the current evidence is WAIT/REJECTED or missing. Analysis remains available; execution fails closed."}
           </div>
+
           {!selectedAccount ? (
-            <Link to="/demo-setup" className="mt-4 flex w-full justify-center rounded-md border border-border-gold px-4 py-3 text-sm font-semibold text-primary">Set up Demo account</Link>
+            <Link
+              to="/demo-setup"
+              className="mt-4 flex w-full justify-center rounded-md border border-border-gold px-4 py-3 text-sm font-semibold text-primary"
+            >
+              Set up Demo account
+            </Link>
           ) : (
-            <button type="button" disabled={submitting || !instrument || selectedAccount.emergency_stop || (selectedAccount.account_environment === "demo" && !demoExecutable)} onClick={() => void submitOrder()} className="mt-4 w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Submitting…" : `Submit ${side.toUpperCase()}`}</button>
+            <button
+              type="button"
+              disabled={
+                submitting ||
+                !instrument ||
+                selectedAccount.emergency_stop ||
+                (demoAccount && !demoExecutable)
+              }
+              onClick={() => void submitOrder()}
+              className="mt-4 w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? "Submitting…" : `Submit ${ticketSide.toUpperCase()}`}
+            </button>
           )}
-          {result ? <div className={`mt-3 rounded-md border p-3 text-xs ${result.ok ? "border-primary/40 text-primary" : "border-destructive/40 text-destructive"}`}>{result.message}</div> : null}
-          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">The browser sends an authenticated intent only. Qualification, market freshness, risk evaluation and fill decisions remain server-side.</p>
+
+          {result ? (
+            <div
+              className={`mt-3 rounded-md border p-3 text-xs ${
+                result.ok
+                  ? "border-primary/40 text-primary"
+                  : "border-destructive/40 text-destructive"
+              }`}
+            >
+              {result.message}
+            </div>
+          ) : null}
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            The browser sends an authenticated intent only. Qualification, market freshness, risk
+            evaluation and fill decisions remain server-side.
+          </p>
         </aside>
       </div>
 
       <PositionLifecyclePanel />
     </div>
+  );
+}
+
+function TicketPlanField({
+  label,
+  value,
+  locked,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  locked: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block text-xs text-muted-foreground">
+      <span className="flex items-center justify-between gap-2">
+        {label}
+        {locked ? <span className="text-[10px] uppercase text-primary">Cossa evidence</span> : null}
+      </span>
+      <input
+        type="number"
+        step="any"
+        value={value}
+        disabled={locked}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-md border bg-background p-2.5 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-80"
+      />
+    </label>
   );
 }
