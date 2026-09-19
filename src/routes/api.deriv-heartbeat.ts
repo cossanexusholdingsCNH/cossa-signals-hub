@@ -14,10 +14,20 @@ export const Route = createFileRoute("/api/deriv-heartbeat")({
           return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
         }
 
-        try {
-          const { runEnabledDerivHeartbeat } = await import(
-            "@/server/market-data/deriv-heartbeat.server"
+        const [{ runEnabledDerivHeartbeat }, { acquireSchedulerLease, releaseSchedulerLease }] =
+          await Promise.all([
+            import("@/server/market-data/deriv-heartbeat.server"),
+            import("@/server/runtime/scheduler-lease.server"),
+          ]);
+        const lease = await acquireSchedulerLease("deriv-heartbeat", 55);
+        if (!lease.acquired) {
+          return Response.json(
+            { ok: true, skipped: true, reason: "heartbeat already running" },
+            { headers: { "cache-control": "no-store" } },
           );
+        }
+
+        try {
           const result = await runEnabledDerivHeartbeat();
           return Response.json(result, {
             status: result.ok ? 200 : 503,
@@ -28,6 +38,8 @@ export const Route = createFileRoute("/api/deriv-heartbeat")({
             { ok: false, error: error instanceof Error ? error.message : "Heartbeat failed" },
             { status: 503, headers: { "cache-control": "no-store" } },
           );
+        } finally {
+          await releaseSchedulerLease("deriv-heartbeat", lease.holder);
         }
       },
     },
