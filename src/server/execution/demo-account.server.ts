@@ -2,7 +2,8 @@ import { supabaseAdmin } from "../../integrations/supabase/client.server";
 
 function positive(value: unknown, label: string) {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${label} must be a positive number`);
+  if (!Number.isFinite(parsed) || parsed <= 0)
+    throw new Error(`${label} must be a positive number`);
   return parsed;
 }
 
@@ -22,7 +23,8 @@ export async function bootstrapDemoTradingAccount(input: {
     .eq("account_environment", "demo")
     .limit(1)
     .maybeSingle();
-  if (existing.error) throw new Error(`Unable to inspect demo account: ${existing.error.message}`);
+  if (existing.error)
+    throw new Error(`Unable to inspect demo account: ${existing.error.message}`);
 
   let accountId = existing.data?.id ?? null;
   if (accountId) {
@@ -33,7 +35,6 @@ export async function bootstrapDemoTradingAccount(input: {
         execution_mode: "paper_auto",
         enabled: true,
         currency,
-        emergency_stop: false,
       })
       .eq("id", accountId)
       .eq("user_id", input.userId);
@@ -57,7 +58,8 @@ export async function bootstrapDemoTradingAccount(input: {
       })
       .select("id")
       .single();
-    if (error || !data) throw new Error(`Unable to create demo account: ${error?.message ?? "missing account"}`);
+    if (error || !data)
+      throw new Error(`Unable to create demo account: ${error?.message ?? "missing account"}`);
     accountId = data.id;
   }
 
@@ -65,7 +67,8 @@ export async function bootstrapDemoTradingAccount(input: {
     .from("trading_account_snapshots")
     .select("id", { count: "exact", head: true })
     .eq("trading_account_id", accountId);
-  if (snapshotCountError) throw new Error(`Unable to inspect demo balance: ${snapshotCountError.message}`);
+  if (snapshotCountError)
+    throw new Error(`Unable to inspect demo balance: ${snapshotCountError.message}`);
 
   if (!count) {
     const { error } = await supabaseAdmin.from("trading_account_snapshots").insert({
@@ -76,7 +79,11 @@ export async function bootstrapDemoTradingAccount(input: {
       currency,
       open_positions: 0,
       provider_timestamp: new Date().toISOString(),
-      metadata: { source: "cossa_demo_bootstrap", virtual_funds: true, starting_balance: startingBalance },
+      metadata: {
+        source: "cossa_demo_bootstrap",
+        virtual_funds: true,
+        starting_balance: startingBalance,
+      },
     });
     if (error) throw new Error(`Unable to seed demo balance: ${error.message}`);
   }
@@ -92,8 +99,10 @@ export async function refreshDemoRiskState(accountId: string, userId: string) {
     .eq("id", accountId)
     .eq("user_id", userId)
     .single();
-  if (accountResult.error || !accountResult.data) throw new Error("Demo trading account was not found");
-  if (accountResult.data.account_environment !== "demo") throw new Error("Demo risk state cannot refresh a live account");
+  if (accountResult.error || !accountResult.data)
+    throw new Error("Demo trading account was not found");
+  if (accountResult.data.account_environment !== "demo")
+    throw new Error("Demo risk state cannot refresh a live account");
 
   const firstSnapshot = await supabaseAdmin
     .from("trading_account_snapshots")
@@ -102,7 +111,8 @@ export async function refreshDemoRiskState(accountId: string, userId: string) {
     .order("captured_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (firstSnapshot.error || !firstSnapshot.data) throw new Error("Demo account has no starting balance");
+  if (firstSnapshot.error || !firstSnapshot.data)
+    throw new Error("Demo account has no starting balance");
 
   const now = new Date();
   const tradingDate = now.toISOString().slice(0, 10);
@@ -114,7 +124,8 @@ export async function refreshDemoRiskState(accountId: string, userId: string) {
     .select("unrealized_pnl")
     .eq("trading_account_id", accountId)
     .in("status", ["opening", "open", "closing"]);
-  if (openPositions.error) throw new Error(`Unable to inspect open positions: ${openPositions.error.message}`);
+  if (openPositions.error)
+    throw new Error(`Unable to inspect open positions: ${openPositions.error.message}`);
 
   const closedPositions = await supabaseAdmin
     .from("execution_positions")
@@ -123,14 +134,33 @@ export async function refreshDemoRiskState(accountId: string, userId: string) {
     .eq("status", "closed")
     .gte("closed_at", start)
     .lte("closed_at", end);
-  if (closedPositions.error) throw new Error(`Unable to inspect closed positions: ${closedPositions.error.message}`);
+  if (closedPositions.error)
+    throw new Error(`Unable to inspect closed positions: ${closedPositions.error.message}`);
+
+  const existingDaily = await supabaseAdmin
+    .from("trading_daily_risk_state")
+    .select(
+      "start_of_day_equity,peak_equity,lowest_equity,loss_limit_triggered,trades_opened,trades_closed",
+    )
+    .eq("trading_account_id", accountId)
+    .eq("trading_date", tradingDate)
+    .maybeSingle();
+  if (existingDaily.error)
+    throw new Error(`Unable to inspect daily risk state: ${existingDaily.error.message}`);
 
   const baseBalance = positive(firstSnapshot.data.balance, "demo base balance");
-  const realizedPnl = (closedPositions.data ?? []).reduce((sum, row) => sum + Number(row.realized_pnl ?? 0), 0);
-  const unrealizedPnl = (openPositions.data ?? []).reduce((sum, row) => sum + Number(row.unrealized_pnl ?? 0), 0);
+  const realizedPnl = (closedPositions.data ?? []).reduce(
+    (sum, row) => sum + Number(row.realized_pnl ?? 0),
+    0,
+  );
+  const unrealizedPnl = (openPositions.data ?? []).reduce(
+    (sum, row) => sum + Number(row.unrealized_pnl ?? 0),
+    0,
+  );
   const balance = baseBalance + realizedPnl;
   const equity = balance + unrealizedPnl;
-  if (!Number.isFinite(equity) || equity <= 0) throw new Error("Demo equity is invalid; execution fails closed");
+  if (!Number.isFinite(equity) || equity <= 0)
+    throw new Error("Demo equity is invalid; execution fails closed");
 
   const currency = accountResult.data.currency || firstSnapshot.data.currency || "USD";
   const { error: snapshotError } = await supabaseAdmin.from("trading_account_snapshots").insert({
@@ -141,9 +171,27 @@ export async function refreshDemoRiskState(accountId: string, userId: string) {
     currency,
     open_positions: (openPositions.data ?? []).length,
     provider_timestamp: now.toISOString(),
-    metadata: { source: "cossa_demo_risk_refresh", virtual_funds: true, realized_pnl: realizedPnl, unrealized_pnl: unrealizedPnl },
+    metadata: {
+      source: "cossa_demo_risk_refresh",
+      virtual_funds: true,
+      realized_pnl: realizedPnl,
+      unrealized_pnl: unrealizedPnl,
+    },
   });
-  if (snapshotError) throw new Error(`Unable to refresh demo account snapshot: ${snapshotError.message}`);
+  if (snapshotError)
+    throw new Error(`Unable to refresh demo account snapshot: ${snapshotError.message}`);
+
+  const startOfDayEquity = Number(existingDaily.data?.start_of_day_equity ?? baseBalance);
+  const previousPeak = Number(existingDaily.data?.peak_equity ?? startOfDayEquity);
+  const previousLow = Number(existingDaily.data?.lowest_equity ?? startOfDayEquity);
+  const tradesClosed = Math.max(
+    Number(existingDaily.data?.trades_closed ?? 0),
+    (closedPositions.data ?? []).length,
+  );
+  const tradesOpened = Math.max(
+    Number(existingDaily.data?.trades_opened ?? 0),
+    (openPositions.data ?? []).length + tradesClosed,
+  );
 
   const daily = await supabaseAdmin
     .from("trading_daily_risk_state")
@@ -151,19 +199,30 @@ export async function refreshDemoRiskState(accountId: string, userId: string) {
       {
         trading_account_id: accountId,
         trading_date: tradingDate,
-        start_of_day_equity: baseBalance,
+        start_of_day_equity: startOfDayEquity,
         realized_pnl: realizedPnl,
-        peak_equity: Math.max(baseBalance, equity),
-        lowest_equity: Math.min(baseBalance, equity),
-        trades_opened: (openPositions.data ?? []).length + (closedPositions.data ?? []).length,
-        trades_closed: (closedPositions.data ?? []).length,
-        loss_limit_triggered: false,
+        peak_equity: Math.max(previousPeak, equity),
+        lowest_equity: Math.min(previousLow, equity),
+        trades_opened: tradesOpened,
+        trades_closed: tradesClosed,
+        loss_limit_triggered: Boolean(existingDaily.data?.loss_limit_triggered),
       },
       { onConflict: "trading_account_id,trading_date" },
     )
     .select("id")
     .single();
-  if (daily.error || !daily.data) throw new Error(`Unable to refresh daily risk state: ${daily.error?.message ?? "missing row"}`);
+  if (daily.error || !daily.data)
+    throw new Error(
+      `Unable to refresh daily risk state: ${daily.error?.message ?? "missing row"}`,
+    );
 
-  return { accountId, equity, balance, realizedPnl, unrealizedPnl, openPositions: (openPositions.data ?? []).length, tradingDate };
+  return {
+    accountId,
+    equity,
+    balance,
+    realizedPnl,
+    unrealizedPnl,
+    openPositions: (openPositions.data ?? []).length,
+    tradingDate,
+  };
 }
