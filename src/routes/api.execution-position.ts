@@ -12,22 +12,48 @@ function bearerToken(request: Request) {
   return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
 }
 
+async function authenticatedUser(request: Request) {
+  const token = bearerToken(request);
+  if (!token) return { error: json({ ok: false, error: "Authentication required" }, 401) };
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
+  if (authError || !auth.user) return { error: json({ ok: false, error: "Invalid session" }, 401) };
+  return { supabaseAdmin, user: auth.user };
+}
+
 export const Route = createFileRoute("/api/execution-position")({
   server: {
     handlers: {
+      GET: async ({ request }) => {
+        try {
+          const auth = await authenticatedUser(request);
+          if ("error" in auth) return auth.error;
+
+          const { data: positions, error } = await auth.supabaseAdmin
+            .from("execution_positions")
+            .select(
+              "id,order_id,trading_account_id,instrument_id,environment,provider,side,status,quantity,entry_price,current_price,stop_loss,take_profit_1,unrealized_pnl,realized_pnl,close_price,close_reason,opened_at,closed_at,created_at,metadata",
+            )
+            .eq("user_id", auth.user.id)
+            .order("created_at", { ascending: false })
+            .limit(100);
+          if (error) throw error;
+
+          return json({ ok: true, positions: positions ?? [] });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to load positions";
+          return json({ ok: false, error: message }, 400);
+        }
+      },
       POST: async ({ request }) => {
         try {
-          const token = bearerToken(request);
-          if (!token) return json({ ok: false, error: "Authentication required" }, 401);
+          const auth = await authenticatedUser(request);
+          if ("error" in auth) return auth.error;
 
-          const [{ supabaseAdmin }, { refreshDemoPosition, closeDemoPosition }] = await Promise.all([
-            import("@/integrations/supabase/client.server"),
-            import("@/server/execution/execution-lifecycle.server"),
-          ]);
-
-          const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
-          if (authError || !auth.user) return json({ ok: false, error: "Invalid session" }, 401);
-
+          const { refreshDemoPosition, closeDemoPosition } = await import(
+            "@/server/execution/execution-lifecycle.server"
+          );
           const body = (await request.json()) as Record<string, unknown>;
           const positionId = String(body.positionId ?? "");
           const action = body.action === "close" ? "close" : "refresh";
