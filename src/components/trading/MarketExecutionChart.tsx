@@ -16,6 +16,7 @@ import {
   ScanLine,
   TextCursorInput,
   Trash2,
+  Undo2,
   Unlock,
   ZoomIn,
   ZoomOut,
@@ -126,6 +127,26 @@ function drawingStorageKey(symbol: string, timeframe: string) {
   return `cossa-signals-drawings:${symbol}:${timeframe}`;
 }
 
+function timeframeMilliseconds(timeframe: string) {
+  switch (timeframe) {
+    case "1m": return 60_000;
+    case "5m": return 5 * 60_000;
+    case "15m": return 15 * 60_000;
+    case "30m": return 30 * 60_000;
+    case "1h": return 60 * 60_000;
+    case "4h": return 4 * 60 * 60_000;
+    default: return 5 * 60_000;
+  }
+}
+
+function humanDuration(milliseconds: number) {
+  const totalMinutes = Math.max(0, Math.round(milliseconds / 60_000));
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 export function MarketExecutionChart({
   symbol,
   timeframe,
@@ -146,12 +167,15 @@ export function MarketExecutionChart({
   const [showStructure, setShowStructure] = useState(true);
   const [tool, setTool] = useState<Tool>("cursor");
   const [drawings, setDrawings] = useState<Drawing[]>([]);
-  const [draftPoint, setDraftPoint] = useState<DrawingPoint | null>(null);
+  const [anchorPoint, setAnchorPoint] = useState<DrawingPoint | null>(null);
+  const [dragPoint, setDragPoint] = useState<DrawingPoint | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<DrawingPoint | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [drawingsVisible, setDrawingsVisible] = useState(true);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(100);
-  const [crosshair, setCrosshair] = useState<DrawingPoint | null>(null);
+  const [liveBuckets, setLiveBuckets] = useState<CandlePoint[]>([]);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -161,7 +185,11 @@ export function MarketExecutionChart({
     } catch {
       setDrawings([]);
     }
-    setDraftPoint(null);
+    setAnchorPoint(null);
+    setDragPoint(null);
+    setHoverPoint(null);
+    setDragging(false);
+    setLiveBuckets([]);
   }, [symbol, timeframe]);
 
   useEffect(() => {
@@ -173,9 +201,17 @@ export function MarketExecutionChart({
   }, [drawings, symbol, timeframe]);
 
   useEffect(() => {
-    if (!fullscreen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFullscreen(false);
+      if (event.key === "Escape") {
+        setAnchorPoint(null);
+        setDragPoint(null);
+        setDragging(false);
+        if (fullscreen) setFullscreen(false);
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        setDrawings((rows) => rows.slice(0, -1));
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -191,29 +227,57 @@ export function MarketExecutionChart({
     }
   }, [closedStructureInput]);
 
+  const intervalMs = useMemo(() => timeframeMilliseconds(timeframe), [timeframe]);
+
+  useEffect(() => {
+    if (currentPrice == null || !Number.isFinite(currentPrice) || !liveEpoch) return;
+    const liveAt = liveEpoch * 1000;
+    const bucketStart = Math.floor(liveAt / intervalMs) * intervalMs;
+    const storedCloseAt = data.length ? new Date(data[data.length - 1].closeTime).getTime() : 0;
+    if (bucketStart + intervalMs <= storedCloseAt + 1_000) return;
+
+    setLiveBuckets((rows) => {
+      const openTime = new Date(bucketStart).toISOString();
+      const closeTime = new Date(bucketStart + intervalMs).toISOString();
+      const existingIndex = rows.findIndex((row) => row.openTime === openTime);
+      if (existingIndex >= 0) {
+        const next = [...rows];
+        const existing = next[existingIndex];
+        next[existingIndex] = {
+          ...existing,
+          high: Math.max(existing.high, currentPrice),
+          low: Math.min(existing.low, currentPrice),
+          close: currentPrice,
+        };
+        return next;
+      }
+
+      const previousClose = rows.at(-1)?.close ?? data.at(-1)?.close ?? currentPrice;
+      return [
+        ...rows,
+        {
+          openTime,
+          closeTime,
+          label: new Date(bucketStart).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          open: previousClose,
+          high: Math.max(previousClose, currentPrice),
+          low: Math.min(previousClose, currentPrice),
+          close: currentPrice,
+        },
+      ].slice(-80);
+    });
+  }, [currentPrice, data, intervalMs, liveEpoch]);
+
   const chartData = useMemo(() => {
-    const rows = data.slice(-visibleCount).map((row) => ({ ...row }));
-    if (!rows.length || currentPrice == null) return rows;
-    const last = rows[rows.length - 1];
-    const liveAt = liveEpoch ? liveEpoch * 1000 : Date.now();
-    const closeAt = new Date(last.closeTime).getTime();
-    if (Number.isFinite(closeAt) && liveAt <= closeAt + 2_000) {
-      last.close = currentPrice;
-      last.high = Math.max(last.high, currentPrice);
-      last.low = Math.min(last.low, currentPrice);
-    } else {
-      rows.push({
-        openTime: new Date(liveAt).toISOString(),
-        closeTime: new Date(liveAt).toISOString(),
-        label: new Date(liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        open: last.close,
-        high: Math.max(last.close, currentPrice),
-        low: Math.min(last.close, currentPrice),
-        close: currentPrice,
-      });
+    const rows = new Map<string, CandlePoint>();
+    for (const row of data) rows.set(row.openTime, { ...row });
+    for (const row of liveBuckets) {
+      if (!rows.has(row.openTime)) rows.set(row.openTime, { ...row });
     }
-    return rows;
-  }, [currentPrice, data, liveEpoch, visibleCount]);
+    return [...rows.values()]
+      .sort((a, b) => new Date(a.openTime).getTime() - new Date(b.openTime).getTime())
+      .slice(-visibleCount);
+  }, [data, liveBuckets, visibleCount]);
 
   const closes = useMemo(() => chartData.map((row) => row.close), [chartData]);
   const ema20 = useMemo(() => ema(closes, 20), [closes]);
@@ -276,10 +340,21 @@ export function MarketExecutionChart({
     const svgX = ((event.clientX - rect.left) / rect.width) * width;
     const svgY = ((event.clientY - rect.top) / rect.height) * height;
     if (svgX < pad.left || svgX > width - pad.right || svgY < pad.top || svgY > height - pad.bottom) return null;
+    const rawRatio = (svgX - pad.left) / plotWidth;
+    const nearestIndex = chartData.length > 1
+      ? Math.max(0, Math.min(chartData.length - 1, Math.round(rawRatio * (chartData.length - 1))))
+      : 0;
+    const snappedRatio = chartData.length > 1 ? nearestIndex / (chartData.length - 1) : rawRatio;
     return {
-      x: (svgX - pad.left) / plotWidth,
+      x: event.shiftKey ? rawRatio : snappedRatio,
       price: priceFromY(svgY),
     };
+  }
+
+  function cancelInteraction() {
+    setAnchorPoint(null);
+    setDragPoint(null);
+    setDragging(false);
   }
 
   function finishSinglePoint(type: "hline" | "vline" | "text", point: DrawingPoint) {
@@ -290,35 +365,71 @@ export function MarketExecutionChart({
       drawing.text = note.trim();
     }
     setDrawings((rows) => [...rows, drawing]);
+    setTool("cursor");
+  }
+
+  function commitTwoPointDrawing(first: DrawingPoint, second: DrawingPoint) {
+    if (tool !== "trend" && tool !== "rectangle" && tool !== "fib" && tool !== "measure") return;
+    setDrawings((rows) => [
+      ...rows,
+      { id: crypto.randomUUID(), type: tool, points: [first, second] },
+    ]);
+    cancelInteraction();
+    setTool("cursor");
+  }
+
+  function interactionDistance(first: DrawingPoint, second: DrawingPoint) {
+    const dx = (xRatio(second.x) - xRatio(first.x));
+    const dy = y(second.price) - y(first.price);
+    return Math.hypot(dx, dy);
   }
 
   function onChartPointerDown(event: React.PointerEvent<SVGSVGElement>) {
     const point = pointerToPoint(event);
     if (!point) return;
-    if (tool === "crosshair") {
-      setCrosshair(point);
-      return;
-    }
-    if (tool === "cursor" || drawingsLocked) return;
+    setHoverPoint(point);
+    if (tool === "crosshair" || tool === "cursor") return;
+    if (drawingsLocked) return;
     if (tool === "hline" || tool === "vline" || tool === "text") {
       finishSinglePoint(tool, point);
       return;
     }
-    if (!draftPoint) {
-      setDraftPoint(point);
+    if (anchorPoint) {
+      commitTwoPointDrawing(anchorPoint, point);
       return;
     }
-    setDrawings((rows) => [
-      ...rows,
-      { id: crypto.randomUUID(), type: tool as Drawing["type"], points: [draftPoint, point] },
-    ]);
-    setDraftPoint(null);
+    setAnchorPoint(point);
+    setDragPoint(point);
+    setDragging(true);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is an enhancement; click-click drawing still works without it.
+    }
   }
 
   function onChartPointerMove(event: React.PointerEvent<SVGSVGElement>) {
-    if (tool !== "crosshair") return;
-    setCrosshair(pointerToPoint(event));
+    const point = pointerToPoint(event);
+    setHoverPoint(point);
+    if (dragging && anchorPoint && point) setDragPoint(point);
   }
+
+  function onChartPointerUp(event: React.PointerEvent<SVGSVGElement>) {
+    if (!dragging || !anchorPoint) return;
+    const point = pointerToPoint(event) ?? dragPoint;
+    setDragging(false);
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Safe when pointer capture is unavailable.
+    }
+    if (!point || interactionDistance(anchorPoint, point) < 7) {
+      setDragPoint(null);
+      return;
+    }
+    commitTwoPointDrawing(anchorPoint, point);
+  }
+
 
   const renderLevel = (value: number | null | undefined, label: string) => {
     if (value == null || !Number.isFinite(value)) return null;
@@ -391,13 +502,36 @@ export function MarketExecutionChart({
     if (drawing.type === "measure") {
       const delta = second!.price - first.price;
       const pct = first.price === 0 ? 0 : (delta / first.price) * 100;
-      return <g key={drawing.id} className="text-primary"><line x1={x1} x2={x2} y1={y1} y2={y2} stroke="currentColor" strokeDasharray="4 3"/><text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="currentColor" fontSize="10">Δ {formatPrice(delta)} · {pct.toFixed(2)}%</text></g>;
+      const bars = Math.max(0, Math.round(Math.abs(second!.x - first.x) * Math.max(chartData.length - 1, 1)));
+      const duration = humanDuration(bars * intervalMs);
+      return (
+        <g key={drawing.id} className="text-primary" pointerEvents="none">
+          <line x1={x1} x2={x2} y1={y1} y2={y2} stroke="currentColor" strokeDasharray="4 3" />
+          <rect x={(x1 + x2) / 2 - 76} y={(y1 + y2) / 2 - 28} width="152" height="22" rx="4" className="fill-background stroke-border" />
+          <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 13} textAnchor="middle" fill="currentColor" fontSize="10">Δ {formatPrice(delta)} · {pct.toFixed(2)}% · {bars} bars · {duration}</text>
+        </g>
+      );
     }
     if (drawing.type === "text") {
       return <text key={drawing.id} x={x1} y={y1} fill="currentColor" fontSize="12" className="text-caution">{drawing.text}</text>;
     }
     return null;
   }
+
+  const hoverIndex = hoverPoint && chartData.length > 1
+    ? Math.max(0, Math.min(chartData.length - 1, Math.round(hoverPoint.x * (chartData.length - 1))))
+    : 0;
+  const hoverCandle = hoverPoint ? chartData[hoverIndex] : null;
+  const activeToolLabel = TOOL_META.find((item) => item.id === tool)?.label ?? "Cursor";
+  const toolInstruction = tool === "cursor"
+    ? "Select a drawing tool to analyse the chart"
+    : tool === "crosshair"
+      ? "Move across the chart to inspect price and candle time"
+      : tool === "hline" || tool === "vline" || tool === "text"
+        ? "Click once on the chart to place it"
+        : anchorPoint
+          ? "Drag and release, or click a second point to finish · Esc cancels"
+          : "Click-drag across the chart, or click once then click a second point";
 
   const movement = chartData.length >= 2
     ? chartData[chartData.length - 1].close - chartData[chartData.length - 2].close
@@ -463,7 +597,7 @@ export function MarketExecutionChart({
           {TOOL_META.map((item) => {
             const Icon = item.icon;
             return (
-              <button key={item.id} type="button" title={item.label} aria-label={item.label} onClick={() => { setTool(item.id); setDraftPoint(null); }} className={cn("rounded p-2 transition-colors", tool === item.id ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+              <button key={item.id} type="button" title={item.label} aria-label={item.label} onClick={() => { setTool(item.id); cancelInteraction(); }} className={cn("rounded p-2 transition-colors", tool === item.id ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
                 <Icon className="size-4" />
               </button>
             );
@@ -472,7 +606,10 @@ export function MarketExecutionChart({
           <button type="button" title={drawingsVisible ? "Hide drawings" : "Show drawings"} onClick={() => setDrawingsVisible((value) => !value)} className="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
             {drawingsVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
           </button>
-          <button type="button" title={drawingsLocked ? "Unlock drawings" : "Lock drawings"} onClick={() => setDrawingsLocked((value) => !value)} className={cn("rounded p-2 hover:bg-muted", drawingsLocked ? "text-primary" : "text-muted-foreground")}>
+          <button type="button" title="Undo last drawing (Ctrl/Cmd+Z)" disabled={drawings.length === 0} onClick={() => setDrawings((rows) => rows.slice(0, -1))} className="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30">
+            <Undo2 className="size-4" />
+          </button>
+          <button type="button" title={drawingsLocked ? "Unlock drawings" : "Lock drawings"} onClick={() => { setDrawingsLocked((value) => !value); cancelInteraction(); }} className={cn("rounded p-2 hover:bg-muted", drawingsLocked ? "text-primary" : "text-muted-foreground")}>
             {drawingsLocked ? <Lock className="size-4" /> : <Unlock className="size-4" />}
           </button>
           <button type="button" title="Clear drawings" onClick={() => { if (window.confirm("Clear all drawings for this market and timeframe?")) setDrawings([]); }} className="rounded p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
@@ -481,19 +618,26 @@ export function MarketExecutionChart({
         </div>
 
         <div className="relative min-w-0">
-          {draftPoint ? (
-            <div className="absolute left-3 top-3 z-10 rounded bg-background/90 px-2 py-1 text-[10px] text-caution shadow">Select second point · Esc/change tool to cancel</div>
-          ) : null}
+          <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[420px] rounded border border-border bg-background/90 px-2.5 py-1.5 text-[10px] shadow">
+            <strong className="text-primary">{activeToolLabel}</strong><span className="text-muted-foreground"> · {toolInstruction}</span>
+          </div>
           <svg
             ref={svgRef}
             viewBox={`0 0 ${width} ${height}`}
-            className={cn("block w-full select-none", fullscreen ? "h-[calc(100vh-160px)] min-h-[620px]" : "h-[58vh] min-h-[480px]")}
+            className={cn(
+              "block w-full select-none touch-none",
+              tool !== "cursor" && "cursor-crosshair",
+              fullscreen ? "h-[calc(100vh-160px)] min-h-[620px]" : "h-[58vh] min-h-[480px]",
+            )}
             preserveAspectRatio="none"
             role="img"
             aria-label={`${symbol} ${mode} chart`}
             onPointerDown={onChartPointerDown}
             onPointerMove={onChartPointerMove}
-            onPointerLeave={() => tool === "crosshair" && setCrosshair(null)}
+            onPointerUp={onChartPointerUp}
+            onPointerCancel={cancelInteraction}
+            onPointerLeave={() => { if (!dragging) setHoverPoint(null); }}
+            onContextMenu={(event) => { event.preventDefault(); cancelInteraction(); }}
           >
             {[0, 1, 2, 3, 4].map((grid) => {
               const value = priceBounds.max - ((priceBounds.max - priceBounds.min) * grid) / 4;
@@ -548,12 +692,24 @@ export function MarketExecutionChart({
 
             {drawingsVisible ? drawings.map(renderDrawing) : null}
 
-            {crosshair && tool === "crosshair" ? (
-              <g className="text-muted-foreground/80">
-                <line x1={xRatio(crosshair.x)} x2={xRatio(crosshair.x)} y1={pad.top} y2={height - pad.bottom} stroke="currentColor" strokeDasharray="3 3" />
-                <line x1={pad.left} x2={width - pad.right} y1={y(crosshair.price)} y2={y(crosshair.price)} stroke="currentColor" strokeDasharray="3 3" />
-                <rect x={width - pad.right - 88} y={y(crosshair.price) - 11} width="84" height="18" rx="3" className="fill-background stroke-border" />
-                <text x={width - pad.right - 8} y={y(crosshair.price) + 2} textAnchor="end" fill="currentColor" fontSize="10">{formatPrice(crosshair.price)}</text>
+            {drawingsVisible && anchorPoint && (dragPoint ?? hoverPoint) && (tool === "trend" || tool === "rectangle" || tool === "fib" || tool === "measure") ? (
+              <g opacity="0.65" pointerEvents="none">
+                {renderDrawing({ id: "__preview__", type: tool, points: [anchorPoint, (dragPoint ?? hoverPoint)!] })}
+              </g>
+            ) : null}
+
+            {hoverPoint && tool === "crosshair" ? (
+              <g className="text-muted-foreground/90" pointerEvents="none">
+                <line x1={xRatio(hoverPoint.x)} x2={xRatio(hoverPoint.x)} y1={pad.top} y2={height - pad.bottom} stroke="currentColor" strokeDasharray="3 3" />
+                <line x1={pad.left} x2={width - pad.right} y1={y(hoverPoint.price)} y2={y(hoverPoint.price)} stroke="currentColor" strokeDasharray="3 3" />
+                <rect x={width - pad.right - 100} y={y(hoverPoint.price) - 12} width="96" height="20" rx="3" className="fill-background stroke-border" />
+                <text x={width - pad.right - 8} y={y(hoverPoint.price) + 2} textAnchor="end" fill="currentColor" fontSize="10">{formatPrice(hoverPoint.price)}</text>
+                {hoverCandle ? (
+                  <>
+                    <rect x={Math.max(pad.left, xRatio(hoverPoint.x) - 48)} y={height - pad.bottom + 4} width="96" height="20" rx="3" className="fill-background stroke-border" />
+                    <text x={xRatio(hoverPoint.x)} y={height - pad.bottom + 18} textAnchor="middle" fill="currentColor" fontSize="10">{hoverCandle.label}</text>
+                  </>
+                ) : null}
               </g>
             ) : null}
 
