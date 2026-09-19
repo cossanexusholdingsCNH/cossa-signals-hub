@@ -6,6 +6,7 @@ import { Activity, ShieldCheck, WalletCards } from "lucide-react";
 import { RequireAuth } from "@/components/layout/RequireAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { MarketExecutionChart } from "@/components/trading/MarketExecutionChart";
+import { PositionLifecyclePanel } from "@/components/trading/PositionLifecyclePanel";
 import { useAuth } from "@/hooks/useAuth";
 import { useInstruments, useLiveSignals } from "@/hooks/useCossa";
 import { supabase } from "@/integrations/supabase/client";
@@ -138,6 +139,7 @@ function TradingWorkspace() {
         ok?: boolean;
         error?: string;
         order?: { id?: string; status?: string };
+        lifecycle?: { positionId?: string } | null;
         decision?: {
           approved?: boolean;
           confirmationRequired?: boolean;
@@ -150,10 +152,15 @@ function TradingWorkspace() {
           ok: true,
           message: `Live order ${payload.order?.id ?? ""} created and awaiting explicit confirmation.`,
         });
+      } else if (payload.decision?.approved && payload.lifecycle?.positionId) {
+        setResult({
+          ok: true,
+          message: `Demo order filled. Position ${payload.lifecycle.positionId} is now open in the execution ledger.`,
+        });
       } else if (payload.decision?.approved) {
         setResult({
           ok: true,
-          message: `Demo order ${payload.order?.id ?? ""} passed server risk checks and was submitted.`,
+          message: `Demo order ${payload.order?.id ?? ""} passed server risk checks.`,
         });
       } else {
         setResult({
@@ -351,7 +358,7 @@ function TradingWorkspace() {
           <div className="mt-4 rounded-lg border border-border p-3 text-xs text-muted-foreground">
             {selectedAccount?.account_environment === "live"
               ? "LIVE account selected. Submission creates an order awaiting explicit confirmation."
-              : "DEMO account selected. Submission runs through server-side paper risk evaluation."}
+              : "DEMO account selected. Submission runs through server-side risk evaluation and durable fill lifecycle."}
           </div>
           <button
             type="button"
@@ -376,6 +383,7 @@ function TradingWorkspace() {
           </p>
         </aside>
       </div>
+      <PositionLifecyclePanel />
     </div>
   );
 }
