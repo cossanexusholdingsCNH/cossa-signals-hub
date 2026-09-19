@@ -11,6 +11,11 @@ export type LiveTickState = {
   error: string | null;
 };
 
+function isExistingSubscriptionMessage(message?: string) {
+  const normalized = message?.toLowerCase() ?? "";
+  return normalized.includes("already subscribed") || normalized.includes("already subscribe");
+}
+
 export function useDerivLiveTick(providerSymbol?: string | null) {
   const [state, setState] = useState<LiveTickState>({
     price: null,
@@ -54,10 +59,12 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
             tick?: { quote?: number; bid?: number; ask?: number; epoch?: number };
           };
           if (message.error) {
-            setState((current) => ({
-              ...current,
-              error: message.error?.message || "Live market stream error",
-            }));
+            const errorMessage = message.error.message || "Live market stream error";
+            if (isExistingSubscriptionMessage(errorMessage)) {
+              setState((current) => ({ ...current, connected: true, error: null }));
+              return;
+            }
+            setState((current) => ({ ...current, error: errorMessage }));
             return;
           }
           if (message.msg_type !== "tick" || !message.tick) return;
