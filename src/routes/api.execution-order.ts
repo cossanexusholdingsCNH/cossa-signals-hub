@@ -20,12 +20,17 @@ export const Route = createFileRoute("/api/execution-order")({
           const token = bearerToken(request);
           if (!token) return json({ ok: false, error: "Authentication required" }, 401);
 
-          const [{ supabaseAdmin }, { createManualOrderIntent }, { evaluatePaperExecution }] =
-            await Promise.all([
-              import("@/integrations/supabase/client.server"),
-              import("@/server/execution/manual-order.server"),
-              import("@/server/execution/paper-coordinator.server"),
-            ]);
+          const [
+            { supabaseAdmin },
+            { createManualOrderIntent },
+            { evaluatePaperExecution },
+            { fillApprovedDemoOrder },
+          ] = await Promise.all([
+            import("@/integrations/supabase/client.server"),
+            import("@/server/execution/manual-order.server"),
+            import("@/server/execution/paper-coordinator.server"),
+            import("@/server/execution/execution-lifecycle.server"),
+          ]);
 
           const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
           if (authError || !auth.user) return json({ ok: false, error: "Invalid session" }, 401);
@@ -49,7 +54,10 @@ export const Route = createFileRoute("/api/execution-order")({
               orderId: order.id,
               userId: auth.user.id,
             });
-            return json({ ok: true, order, decision });
+            const lifecycle = decision.approved
+              ? await fillApprovedDemoOrder(order.id, auth.user.id)
+              : null;
+            return json({ ok: true, order, decision, lifecycle });
           }
 
           return json({
