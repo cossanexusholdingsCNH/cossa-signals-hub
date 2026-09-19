@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { runEnabledDerivIngestion } from "@/server/market-data/deriv-live-ingestion.server";
+import {
+  acquireSchedulerLease,
+  releaseSchedulerLease,
+} from "@/server/runtime/scheduler-lease.server";
 
 function authorized(request: Request) {
   const expected = process.env.CRON_SECRET;
@@ -15,6 +19,14 @@ export const Route = createFileRoute("/api/deriv-ingest")({
       GET: async ({ request }) => {
         if (!authorized(request)) {
           return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+        }
+
+        const lease = await acquireSchedulerLease("deriv-full-ingestion", 480);
+        if (!lease.acquired) {
+          return Response.json(
+            { ok: true, skipped: true, reason: "full ingestion already running" },
+            { headers: { "cache-control": "no-store" } },
+          );
         }
 
         try {
@@ -33,6 +45,8 @@ export const Route = createFileRoute("/api/deriv-ingest")({
               headers: { "cache-control": "no-store" },
             },
           );
+        } finally {
+          await releaseSchedulerLease("deriv-full-ingestion", lease.holder);
         }
       },
     },
