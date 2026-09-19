@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { ScannerControlsPanel } from "@/components/admin/ScannerControlsPanel";
 import { PageHeader, Panel, PanelHeader, StatCard } from "@/components/cossa/primitives";
 import { useIsAdmin } from "@/components/layout/RequireStaff";
 import {
@@ -122,6 +123,8 @@ function AdminOverview() {
           </p>
         </div>
       </Panel>
+
+      <ScannerControlsPanel />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel>
