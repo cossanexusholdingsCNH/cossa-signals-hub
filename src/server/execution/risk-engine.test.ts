@@ -14,6 +14,8 @@ const base: ExecutionRiskInput = {
   stopLoss: 98,
   confidence: 80,
   minimumConfidence: 70,
+  dataConfidence: 95,
+  minimumDataConfidence: 80,
   marketDataAgeMs: 30_000,
   maximumMarketDataAgeMs: 120_000,
   accountEnabled: true,
@@ -51,6 +53,14 @@ describe("evaluateExecutionRisk", () => {
     const result = evaluateExecutionRisk({ ...base, marketDataAgeMs: 120_001 });
     expect(result.approved).toBe(false);
     expect(result.rejectionReasons).toContain("Market data is stale");
+  });
+
+  it("rejects low data confidence independently of signal confidence", () => {
+    const result = evaluateExecutionRisk({ ...base, confidence: 95, dataConfidence: 54 });
+    expect(result.approved).toBe(false);
+    expect(result.gates.signalQualityGateClear).toBe(true);
+    expect(result.gates.dataConfidenceGateClear).toBe(false);
+    expect(result.rejectionReasons).toContain("Data confidence is below execution threshold");
   });
 
   it("rejects duplicate execution intents", () => {

@@ -5,6 +5,7 @@ export type PaperExecutionRequest = {
   orderId: string;
   userId: string;
   minimumConfidence?: number;
+  minimumDataConfidence?: number;
   maximumSnapshotAgeMs?: number;
   maximumMarketDataAgeMs?: number;
   valuePerPriceUnit?: number;
@@ -31,13 +32,35 @@ function requireFinitePositive(value: unknown, label: string): number {
   return parsed;
 }
 
+function requirePercentage(value: unknown, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100)
+    throw new Error(`${label} must be between 0 and 100`);
+  return parsed;
+}
+
 export async function evaluatePaperExecution(
   request: PaperExecutionRequest,
 ): Promise<PaperExecutionDecision> {
   const now = request.now ?? new Date();
   const maximumSnapshotAgeMs = request.maximumSnapshotAgeMs ?? 120_000;
-  const maximumMarketDataAgeMs = request.maximumMarketDataAgeMs ?? 120_000;
   const minimumConfidence = request.minimumConfidence ?? 70;
+
+  const controlsResult = await supabaseAdmin
+    .from("platform_controls")
+    .select("minimum_data_confidence,stale_threshold_seconds")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (controlsResult.error || !controlsResult.data) {
+    throw new Error("Missing platform data-confidence controls; execution fails closed");
+  }
+  const minimumDataConfidence =
+    request.minimumDataConfidence ??
+    requirePercentage(controlsResult.data.minimum_data_confidence, "minimum data confidence");
+  const maximumMarketDataAgeMs =
+    request.maximumMarketDataAgeMs ??
+    requireFinitePositive(controlsResult.data.stale_threshold_seconds, "stale threshold") * 1000;
 
   const orderResult = await supabaseAdmin
     .from("execution_orders")
@@ -113,7 +136,8 @@ export async function evaluatePaperExecution(
     order.metadata && typeof order.metadata === "object" && !Array.isArray(order.metadata)
       ? order.metadata
       : {};
-  const confidence = Number(metadata["confidence"] ?? 0);
+  const confidence = requirePercentage(metadata["confidence"] ?? 0, "signal confidence");
+  const dataConfidence = requirePercentage(metadata["data_confidence"] ?? 0, "data confidence");
   const marketGeneratedAt = metadata["generated_at"] ?? metadata["signal_generated_at"];
   const marketDataAgeMs =
     typeof marketGeneratedAt === "string"
@@ -136,6 +160,8 @@ export async function evaluatePaperExecution(
     stopLoss: requireFinitePositive(order.stop_loss, "stop loss"),
     confidence,
     minimumConfidence,
+    dataConfidence,
+    minimumDataConfidence,
     marketDataAgeMs,
     maximumMarketDataAgeMs,
     accountEnabled: Boolean(account.enabled),
@@ -163,7 +189,6 @@ export async function evaluatePaperExecution(
       duplicate_order_gate_clear: decision.gates.duplicateOrderGateClear,
       checks: {
         ...decision.gates,
-        positionSizeGateClear: decision.gates.positionSizeGateClear,
         equity: snapshot.equity,
         balance: snapshot.balance,
         startOfDayEquity: dailyResult.data.start_of_day_equity,
@@ -173,8 +198,12 @@ export async function evaluatePaperExecution(
         rawPositionSize: decision.rawPositionSize,
         positionSize: decision.positionSize,
         confidence,
+        minimumConfidence,
+        dataConfidence,
+        minimumDataConfidence,
         snapshotAgeMs,
         marketDataAgeMs,
+        maximumMarketDataAgeMs,
       },
       rejection_reasons: decision.rejectionReasons,
     })
@@ -199,6 +228,7 @@ export async function evaluatePaperExecution(
         risk_check_id: riskRow.id,
         risk_approved: decision.approved,
         calculated_position_size: decision.positionSize,
+        minimum_data_confidence: minimumDataConfidence,
         paper_submission_only: true,
       },
     })
@@ -214,6 +244,9 @@ export async function evaluatePaperExecution(
     payload: {
       risk_check_id: riskRow.id,
       position_size: decision.positionSize,
+      signal_confidence: confidence,
+      data_confidence: dataConfidence,
+      minimum_data_confidence: minimumDataConfidence,
       rejection_reasons: decision.rejectionReasons,
     },
   });

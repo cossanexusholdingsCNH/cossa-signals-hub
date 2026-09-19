@@ -66,6 +66,8 @@ async function persistEvidence(
     direction: evidence.plan.direction,
     regime: evidence.plan.regime,
     confidence_score: evidence.plan.confidence,
+    data_confidence_score: evidence.dataConfidence.score,
+    data_confidence_breakdown: evidence.dataConfidence,
     entry: evidence.plan.entry,
     entry_zone_low: evidence.plan.entryZoneLow,
     entry_zone_high: evidence.plan.entryZoneHigh,
@@ -122,6 +124,7 @@ async function persistEngineRun(evidence: SignalEvidence, signalId: string | nul
         provider_symbol: evidence.providerSymbol,
         indicators: evidence.plan.indicators,
         reasons: evidence.plan.reasons,
+        data_confidence: evidence.dataConfidence,
       },
       finished_at: evidence.generatedAt,
     })
@@ -160,8 +163,6 @@ async function createPaperOrder(
     .maybeSingle();
   if (existing.data?.id) return existing.data.id;
 
-  // requested_amount is a temporary paper placeholder only. The fail-closed
-  // risk coordinator replaces it with the calculated position size before submission.
   const { data, error } = await supabaseAdmin
     .from("execution_orders")
     .insert({
@@ -187,6 +188,8 @@ async function createPaperOrder(
         provider_symbol: candidate.providerSymbol,
         timeframe: candidate.timeframe,
         confidence: candidate.confidence,
+        data_confidence: candidate.dataConfidence,
+        data_confidence_version: evidence.dataConfidence.version,
         signal_generated_at: evidence.generatedAt,
         market_data_from: evidence.dataFrom,
         market_data_to: evidence.dataTo,
@@ -208,8 +211,6 @@ export async function runAndPersistDerivSignal(
   await persistCandles(result.candles);
 
   const storedEvidence = await persistEvidence(result.evidence);
-  // A duplicate means this exact closed-candle decision was already processed.
-  // Do not create a second engine run or paper order during scheduler retries.
   if (storedEvidence.duplicate) {
     return {
       evidenceId: storedEvidence.id,

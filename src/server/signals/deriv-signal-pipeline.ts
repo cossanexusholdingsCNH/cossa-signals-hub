@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { fetchDerivCandles, type DerivCandle } from "../market-data/deriv";
+import { evaluateDataConfidence, type DataConfidenceResult } from "./data-confidence";
 import { buildTradePlan, type Candle, type TradePlan } from "./deterministic-engine";
 
 export type SupportedTimeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
@@ -36,6 +37,7 @@ export type SignalEvidence = {
   dataFrom: string;
   dataTo: string;
   candleCount: number;
+  dataConfidence: DataConfidenceResult;
   plan: TradePlan;
 };
 
@@ -46,6 +48,7 @@ export type PaperExecutionCandidate = {
   timeframe: SupportedTimeframe;
   direction: "buy" | "sell";
   confidence: number;
+  dataConfidence: number;
   entry: number;
   stopLoss: number;
   takeProfit1: number;
@@ -136,9 +139,9 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
   const now = input.now ?? new Date();
   const minimumCandles = Math.max(60, input.minimumCandles ?? 100);
   const granularitySeconds = TIMEFRAME_SECONDS[input.timeframe];
+  const expectedIntervalMs = granularitySeconds * 1000;
   const maximumCandleAgeMs = input.maximumCandleAgeMs ?? granularitySeconds * 2 * 1000;
 
-  // Fetch extra rows because the latest provider candle may still be open and is rejected below.
   const raw = await fetchDerivCandles(
     input.providerSymbol,
     granularitySeconds,
@@ -160,6 +163,13 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
   }
 
   const analysisWindow = candles.slice(-minimumCandles);
+  const dataConfidence = evaluateDataConfidence({
+    candles: analysisWindow,
+    expectedIntervalMs,
+    minimumCandles,
+    now,
+    maximumAgeMs: maximumCandleAgeMs,
+  });
   const plan = buildTradePlan(analysisWindow);
   const fp = fingerprint(input, analysisWindow);
   const evidence: SignalEvidence = {
@@ -173,6 +183,7 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
     dataFrom: analysisWindow[0].openTime.toISOString(),
     dataTo: analysisWindow.at(-1)!.closeTime.toISOString(),
     candleCount: analysisWindow.length,
+    dataConfidence,
     plan,
   };
 
@@ -193,6 +204,7 @@ export async function runDerivSignalPipeline(input: SignalPipelineInput): Promis
         timeframe: input.timeframe,
         direction: plan.direction as "buy" | "sell",
         confidence: plan.confidence,
+        dataConfidence: dataConfidence.score,
         entry: plan.entry!,
         stopLoss: plan.stopLoss!,
         takeProfit1: plan.takeProfit1!,
