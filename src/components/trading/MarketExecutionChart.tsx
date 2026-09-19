@@ -47,7 +47,7 @@ type Props = {
   currentPrice?: number | null;
   liveEpoch?: number | null;
   liveConnected?: boolean;
-  liveReceivedAtMs?: number | null;
+  liveAgeMs?: number | null;
   bid?: number | null;
   ask?: number | null;
 };
@@ -171,7 +171,7 @@ export function MarketExecutionChart({
   currentPrice,
   liveEpoch,
   liveConnected = false,
-  liveReceivedAtMs = null,
+  liveAgeMs = null,
   bid,
   ask,
 }: Props) {
@@ -340,9 +340,10 @@ export function MarketExecutionChart({
     setVisibleCount((value) => Math.max(12, Math.min(value, Math.max(12, allChartData.length || 12))));
   }, [allChartData.length, maxPanOffset]);
 
+  const latestClosedTimeMs = data.length ? new Date(data[data.length - 1].closeTime).getTime() : 0;
   const closedStructureInput = useMemo(
-    () => chartData.filter((row) => new Date(row.closeTime).getTime() <= Date.now() + 1_000),
-    [chartData],
+    () => chartData.filter((row) => new Date(row.closeTime).getTime() <= latestClosedTimeMs + 1_000),
+    [chartData, latestClosedTimeMs],
   );
   const structure = useMemo(() => {
     if (closedStructureInput.length < 20) return null;
@@ -367,7 +368,7 @@ export function MarketExecutionChart({
   const plotHeight = height - pad.top - pad.bottom;
   const rightSpaceBars = 8;
   const horizontalSlots = Math.max(chartData.length - 1 + rightSpaceBars, 1);
-  const firstVisibleTime = chartData.length ? new Date(chartData[0].openTime).getTime() : Date.now();
+  const firstVisibleTime = chartData.length ? new Date(chartData[0].openTime).getTime() : 0;
   const lastVisibleTime = chartData.length ? new Date(chartData[chartData.length - 1].openTime).getTime() : firstVisibleTime;
 
   const priceBounds = useMemo(() => {
@@ -773,19 +774,12 @@ export function MarketExecutionChart({
         : anchorPoint
           ? "Drag and release, or click a second point to finish · Esc cancels"
           : "Click-drag across the chart, or click once then click a second point";
-  const transportAgeMs = liveReceivedAtMs == null ? null : Math.max(0, Date.now() - liveReceivedAtMs);
-  const marketAgeMs = liveEpoch == null ? null : Math.max(0, Date.now() - liveEpoch * 1_000);
-  const effectiveTickAgeMs = marketAgeMs ?? transportAgeMs;
-  const tickFresh = Boolean(
-    liveConnected &&
-    transportAgeMs != null && transportAgeMs < 6_000 &&
-    effectiveTickAgeMs != null && effectiveTickAgeMs < 6_000
-  );
-  const tickAgeLabel = effectiveTickAgeMs == null
+  const tickFresh = Boolean(liveConnected && liveAgeMs != null && liveAgeMs < 6_000);
+  const tickAgeLabel = liveAgeMs == null
     ? "—"
-    : effectiveTickAgeMs < 1_000
-      ? `${Math.round(effectiveTickAgeMs)}ms`
-      : `${(effectiveTickAgeMs / 1_000).toFixed(1)}s`;
+    : liveAgeMs < 1_000
+      ? `${Math.round(liveAgeMs)}ms`
+      : `${(liveAgeMs / 1_000).toFixed(1)}s`;
 
   const movement = chartData.length >= 2
     ? chartData[chartData.length - 1].close - chartData[chartData.length - 2].close

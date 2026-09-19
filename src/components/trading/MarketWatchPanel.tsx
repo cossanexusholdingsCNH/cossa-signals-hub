@@ -109,9 +109,6 @@ export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSel
           const evidence = evidenceBySymbol.get(market.symbol);
           const selected = market.symbol === selectedSymbol;
           const rowPrice = selected && selectedLive?.price != null ? selectedLive.price : market.currentPrice;
-          const syncedAt = market.lastDataAt ? new Date(market.lastDataAt).getTime() : null;
-          const syncAgeMs = syncedAt && Number.isFinite(syncedAt) ? Math.max(0, Date.now() - syncedAt) : null;
-          const serverFresh = syncAgeMs != null && syncAgeMs < 120_000;
           return (
             <div
               key={market.id}
@@ -136,7 +133,7 @@ export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSel
                 <button type="button" onClick={() => onSelect(market.symbol)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate font-semibold">{market.symbol}</span>
-                    <span className={cn("size-1.5 shrink-0 rounded-full", selected && selectedLive?.connected ? "animate-pulse bg-primary" : serverFresh ? "bg-primary/70" : "bg-caution")} title={selected ? (selectedLive?.connected ? "Direct Deriv WebSocket live" : "Live stream reconnecting") : serverFresh ? "Server price synced within 2 minutes" : "Server price is older than 2 minutes"} />
+                    <span className={cn("size-1.5 shrink-0 rounded-full", selected ? (selectedLive?.connected ? "animate-pulse bg-primary" : "bg-caution") : "bg-muted-foreground/60")} title={selected ? (selectedLive?.connected ? "Direct Deriv WebSocket live" : "Live stream reconnecting") : market.lastDataAt ? `Server-synced at ${new Date(market.lastDataAt).toLocaleTimeString()}` : "Server-synced price; timestamp unavailable"} />
                   </div>
                   <div className="truncate text-[10px] text-muted-foreground">{market.displayName}</div>
                 </button>

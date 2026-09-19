@@ -10,6 +10,7 @@ export type LiveTickState = {
   connected: boolean;
   error: string | null;
   receivedAtMs: number | null;
+  ageMs: number | null;
 };
 
 function isExistingSubscriptionMessage(message?: string) {
@@ -26,6 +27,7 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
     connected: false,
     error: null,
     receivedAtMs: null,
+    ageMs: null,
   });
   const socketRef = useRef<WebSocket | null>(null);
   const lastTickAtRef = useRef<number | null>(null);
@@ -34,7 +36,7 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
     const symbol = providerSymbol?.trim();
     if (!symbol) {
       lastTickAtRef.current = null;
-      setState({ price: null, bid: null, ask: null, epoch: null, connected: false, error: null, receivedAtMs: null });
+      setState({ price: null, bid: null, ask: null, epoch: null, connected: false, error: null, receivedAtMs: null, ageMs: null });
       return;
     }
 
@@ -87,6 +89,7 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
             connected: true,
             error: null,
             receivedAtMs,
+            ageMs: Number.isFinite(epoch) ? Math.max(0, receivedAtMs - epoch * 1_000) : 0,
           });
         } catch {
           // Ignore malformed frames; the next valid tick will replace state.
@@ -111,12 +114,18 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
     connect();
 
     const watchdog = setInterval(() => {
+      const now = Date.now();
       const lastTickAt = lastTickAtRef.current;
-      if (lastTickAt == null || Date.now() - lastTickAt < 6_000) return;
+      setState((current) => ({
+        ...current,
+        ageMs: current.epoch != null ? Math.max(0, now - current.epoch * 1_000) : current.ageMs,
+      }));
+      if (lastTickAt == null || now - lastTickAt < 6_000) return;
       lastTickAtRef.current = null;
       setState((current) => ({
         ...current,
         connected: false,
+        ageMs: current.epoch != null ? Math.max(0, now - current.epoch * 1_000) : current.ageMs,
         error: "Live Deriv tick stream is stale (>6s); reconnecting",
       }));
       const socket = socketRef.current;

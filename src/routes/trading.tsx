@@ -502,11 +502,11 @@ function TradingWorkspace() {
         <div className="min-w-0 space-y-2">
           {layoutMode === "split" ? (
             <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_330px]">
-              <div className="min-w-0"><MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} liveReceivedAtMs={liveTick.receivedAtMs} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} /></div>
+              <div className="min-w-0"><MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} liveAgeMs={liveTick.ageMs} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} /></div>
               {ticket}
             </div>
           ) : (
-            <MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} liveReceivedAtMs={liveTick.receivedAtMs} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} />
+            <MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} liveAgeMs={liveTick.ageMs} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} />
           )}
 
           {streamConfig.data?.provider === "deriv" && liveTick.error ? (
