@@ -49,7 +49,8 @@ export type ExecutionRiskDecision = {
 };
 
 const finitePositive = (value: number) => Number.isFinite(value) && value > 0;
-const finitePercentage = (value: number) => Number.isFinite(value) && value >= 0 && value <= 100;
+const finitePercentage = (value: number) =>
+  Number.isFinite(value) && value >= 0 && value <= 100;
 
 function floorToStep(value: number, step: number) {
   const precision = Math.max(0, (String(step).split(".")[1] ?? "").length);
@@ -64,7 +65,8 @@ export function evaluateExecutionRisk(input: ExecutionRiskInput): ExecutionRiskD
     throw new Error("Start-of-day equity must be positive");
   if (!finitePositive(input.entry) || !finitePositive(input.stopLoss))
     throw new Error("Entry and stop loss must be positive");
-  if (!finitePercentage(input.confidence)) throw new Error("Signal confidence must be between 0 and 100");
+  if (!finitePercentage(input.confidence))
+    throw new Error("Signal confidence must be between 0 and 100");
   if (!finitePercentage(input.minimumConfidence))
     throw new Error("Minimum signal confidence must be between 0 and 100");
   if (!finitePercentage(input.dataConfidence))
