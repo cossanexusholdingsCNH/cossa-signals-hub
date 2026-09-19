@@ -12,6 +12,7 @@ export type ManualOrderIntent = {
   stopLoss: number;
   takeProfit1: number;
   signalId?: string | null;
+  signalEvidenceId?: string | null;
   riskPct?: number | null;
 };
 
@@ -55,7 +56,32 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
     timeframe: string;
   } | null = null;
 
-  if (input.signalId) {
+  if (input.signalEvidenceId) {
+    const { data: evidence, error: evidenceError } = await supabaseAdmin
+      .from("signal_evidence")
+      .select(
+        "id,instrument_id,direction,timeframe,confidence_score,data_confidence_score,generated_at,data_to,entry,stop_loss,take_profit_1",
+      )
+      .eq("id", input.signalEvidenceId)
+      .eq("instrument_id", input.instrumentId)
+      .single();
+    if (evidenceError || !evidence)
+      throw new Error("Selected Cossa evidence was not found for this instrument");
+
+    const direction = String(evidence.direction);
+    if (direction !== "buy" && direction !== "sell")
+      throw new Error("Selected Cossa evidence is not an executable BUY/SELL decision");
+    if (direction !== input.side)
+      throw new Error(`Order side must match current Cossa evidence (${direction.toUpperCase()})`);
+
+    signalEvidence = {
+      confidence: Number(evidence.confidence_score ?? 0),
+      dataConfidence: Number(evidence.data_confidence_score ?? 0),
+      generatedAt: evidence.data_to ?? evidence.generated_at,
+      direction,
+      timeframe: String(evidence.timeframe),
+    };
+  } else if (input.signalId) {
     const { data: signal, error: signalError } = await supabaseAdmin
       .from("signals")
       .select("id,instrument_id,direction,timeframe,confidence_score,data_timestamp,calculated_at,created_at")
@@ -95,7 +121,7 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
   const isDemo = account.account_environment === "demo";
   if (isDemo && !signalEvidence) {
     throw new Error(
-      "Demo auto execution requires a current Cossa signal so risk checks can verify confidence, data quality and freshness",
+      "Demo auto execution requires current Cossa evidence so risk checks can verify confidence, data quality and freshness",
     );
   }
 
@@ -109,7 +135,7 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
     .insert({
       user_id: input.userId,
       trading_account_id: input.tradingAccountId,
-      signal_id: input.signalId ?? null,
+      signal_id: input.signalEvidenceId ? null : input.signalId ?? null,
       instrument_id: input.instrumentId,
       side: input.side,
       execution_mode: executionMode,
@@ -127,6 +153,7 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
         account_environment: account.account_environment,
         provider: account.provider,
         manual_ticket: true,
+        signal_evidence_id: input.signalEvidenceId ?? null,
         confidence: signalEvidence?.confidence ?? null,
         data_confidence: signalEvidence?.dataConfidence ?? null,
         generated_at: signalEvidence?.generatedAt ?? null,
@@ -148,6 +175,7 @@ export async function createManualOrderIntent(input: ManualOrderIntent) {
       source: "cossa_trading_terminal",
       account_environment: account.account_environment,
       confirmation_required: confirmationRequired,
+      signal_evidence_id: input.signalEvidenceId ?? null,
       signal_confidence: signalEvidence?.confidence ?? null,
       data_confidence: signalEvidence?.dataConfidence ?? null,
       signal_generated_at: signalEvidence?.generatedAt ?? null,
