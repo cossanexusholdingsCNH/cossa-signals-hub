@@ -19,11 +19,12 @@ type Props = {
   selectedSymbol: string;
   opportunities: RankedOpportunity[];
   onSelect: (symbol: string) => void;
+  selectedLive?: { price: number | null; connected: boolean; receivedAtMs: number | null };
 };
 
 const FAVORITES_KEY = "cossa-signals-market-watch-favorites";
 
-export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSelect }: Props) {
+export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSelect, selectedLive }: Props) {
   const [search, setSearch] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -75,7 +76,7 @@ export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSel
         <div className="flex items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-semibold">Market Watch</h3>
-            <p className="text-[10px] text-muted-foreground">Verified live Deriv markets</p>
+            <p className="text-[10px] text-muted-foreground">Selected market is direct-live; others show last server sync</p>
           </div>
           <button
             type="button"
@@ -107,6 +108,7 @@ export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSel
         {visible.map((market) => {
           const evidence = evidenceBySymbol.get(market.symbol);
           const selected = market.symbol === selectedSymbol;
+          const rowPrice = selected && selectedLive?.price != null ? selectedLive.price : market.currentPrice;
           return (
             <div
               key={market.id}
@@ -131,13 +133,13 @@ export function MarketWatchPanel({ markets, selectedSymbol, opportunities, onSel
                 <button type="button" onClick={() => onSelect(market.symbol)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate font-semibold">{market.symbol}</span>
-                    <span className="size-1.5 shrink-0 rounded-full bg-primary" title="Live mapping" />
+                    <span className={cn("size-1.5 shrink-0 rounded-full", selected ? (selectedLive?.connected ? "animate-pulse bg-primary" : "bg-caution") : "bg-muted-foreground/60")} title={selected ? (selectedLive?.connected ? "Direct Deriv WebSocket live" : "Live stream reconnecting") : market.lastDataAt ? `Server-synced at ${new Date(market.lastDataAt).toLocaleTimeString()}` : "Server-synced price; timestamp unavailable"} />
                   </div>
                   <div className="truncate text-[10px] text-muted-foreground">{market.displayName}</div>
                 </button>
               </div>
               <button type="button" onClick={() => onSelect(market.symbol)} className="text-right font-mono text-[11px]">
-                {price(market.currentPrice)}
+                {price(rowPrice)}
               </button>
               <button
                 type="button"

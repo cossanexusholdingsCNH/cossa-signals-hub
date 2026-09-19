@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -47,8 +47,15 @@ function TradingPage() {
 function TradingWorkspace() {
   const search = Route.useSearch();
   const { user } = useAuth();
-  const { data: instruments = [] } = useInstruments();
+  const { data: instruments = [], refetch: refetchInstruments } = useInstruments();
   const scanner = useOpportunityScanner(15_000);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refetchInstruments();
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [refetchInstruments]);
   const currentEvidence = scanner.data?.opportunities ?? [];
 
   const tradable = useMemo(
@@ -208,7 +215,7 @@ function TradingWorkspace() {
         .eq("timeframe", selectedTimeframe)
         .eq("is_closed", true)
         .order("open_time", { ascending: false })
-        .limit(220);
+        .limit(720);
       if (error) throw error;
       return (data ?? []).reverse().map((row) => ({
         openTime: row.open_time,
@@ -495,11 +502,11 @@ function TradingWorkspace() {
         <div className="min-w-0 space-y-2">
           {layoutMode === "split" ? (
             <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_330px]">
-              <div className="min-w-0"><MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} /></div>
+              <div className="min-w-0"><MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} liveAgeMs={liveTick.ageMs} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} /></div>
               {ticket}
             </div>
           ) : (
-            <MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} />
+            <MarketExecutionChart symbol={selectedSymbol || "Market"} timeframe={selectedTimeframe} data={candles.data ?? []} currentPrice={currentPrice} liveEpoch={liveTick.epoch} liveConnected={liveTick.connected} liveAgeMs={liveTick.ageMs} bid={liveTick.bid} ask={liveTick.ask} entryPrice={chartEntry} stopLoss={chartStopLoss} takeProfit1={chartTakeProfit} />
           )}
 
           {streamConfig.data?.provider === "deriv" && liveTick.error ? (
@@ -520,6 +527,7 @@ function TradingWorkspace() {
             markets={tradable.map((item) => ({ id: item.id, symbol: item.symbol, displayName: item.display_name, category: item.category, assetClass: item.asset_class, currentPrice: item.current_price, lastDataAt: item.last_data_at }))}
             selectedSymbol={selectedSymbol}
             opportunities={currentEvidence}
+            selectedLive={{ price: liveTick.price, connected: liveTick.connected, receivedAtMs: liveTick.receivedAtMs }}
             onSelect={selectInstrument}
           />
         ) : null}

@@ -68,11 +68,11 @@ export const Route = createFileRoute("/api/trading-candles")({
 
           const { fetchDerivCandles } = await import("@/server/market-data/deriv");
           const granularity = TIMEFRAME_SECONDS[timeframe];
-          const raw = await fetchDerivCandles(mapping.provider_symbol, granularity, 240);
+          const raw = await fetchDerivCandles(mapping.provider_symbol, granularity, 800);
           const nowSeconds = Math.floor(Date.now() / 1000);
           const candles = raw
             .filter((candle) => candle.epoch + granularity <= nowSeconds + 2)
-            .slice(-220)
+            .slice(-720)
             .map((candle) => ({
               openTime: new Date(candle.epoch * 1000).toISOString(),
               closeTime: new Date((candle.epoch + granularity) * 1000).toISOString(),

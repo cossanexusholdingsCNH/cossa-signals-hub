@@ -9,6 +9,8 @@ export type LiveTickState = {
   epoch: number | null;
   connected: boolean;
   error: string | null;
+  receivedAtMs: number | null;
+  ageMs: number | null;
 };
 
 function isExistingSubscriptionMessage(message?: string) {
@@ -24,13 +26,17 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
     epoch: null,
     connected: false,
     error: null,
+    receivedAtMs: null,
+    ageMs: null,
   });
   const socketRef = useRef<WebSocket | null>(null);
+  const lastTickAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     const symbol = providerSymbol?.trim();
     if (!symbol) {
-      setState({ price: null, bid: null, ask: null, epoch: null, connected: false, error: null });
+      lastTickAtRef.current = null;
+      setState({ price: null, bid: null, ask: null, epoch: null, connected: false, error: null, receivedAtMs: null, ageMs: null });
       return;
     }
 
@@ -73,6 +79,8 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
           const bid = Number(message.tick.bid);
           const ask = Number(message.tick.ask);
           const epoch = Number(message.tick.epoch);
+          const receivedAtMs = Date.now();
+          lastTickAtRef.current = receivedAtMs;
           setState({
             price,
             bid: Number.isFinite(bid) ? bid : null,
@@ -80,6 +88,8 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
             epoch: Number.isFinite(epoch) ? epoch : null,
             connected: true,
             error: null,
+            receivedAtMs,
+            ageMs: Number.isFinite(epoch) ? Math.max(0, receivedAtMs - epoch * 1_000) : 0,
           });
         } catch {
           // Ignore malformed frames; the next valid tick will replace state.
@@ -103,9 +113,30 @@ export function useDerivLiveTick(providerSymbol?: string | null) {
 
     connect();
 
+    const watchdog = setInterval(() => {
+      const now = Date.now();
+      const lastTickAt = lastTickAtRef.current;
+      setState((current) => ({
+        ...current,
+        ageMs: current.epoch != null ? Math.max(0, now - current.epoch * 1_000) : current.ageMs,
+      }));
+      if (lastTickAt == null || now - lastTickAt < 6_000) return;
+      lastTickAtRef.current = null;
+      setState((current) => ({
+        ...current,
+        connected: false,
+        ageMs: current.epoch != null ? Math.max(0, now - current.epoch * 1_000) : current.ageMs,
+        error: "Live Deriv tick stream is stale (>6s); reconnecting",
+      }));
+      const socket = socketRef.current;
+      if (socket?.readyState === WebSocket.OPEN) socket.close();
+    }, 2_000);
+
     return () => {
       cancelled = true;
+      lastTickAtRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearInterval(watchdog);
       const socket = socketRef.current;
       socketRef.current = null;
       if (socket && socket.readyState <= WebSocket.OPEN) socket.close();
