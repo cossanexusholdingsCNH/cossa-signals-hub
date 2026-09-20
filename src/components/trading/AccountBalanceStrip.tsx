@@ -54,12 +54,13 @@ function money(value: number, currency: string) {
   }
 }
 
-function snapshotFreshness(snapshotAt: string | null) {
+function snapshotFreshness(snapshotAt: string | null, openPositions: number) {
   if (!snapshotAt) return { label: "No account snapshot", stale: true };
   const timestamp = new Date(snapshotAt).getTime();
   if (!Number.isFinite(timestamp)) return { label: "Invalid snapshot time", stale: true };
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (seconds < 60) return { label: `Ledger ${seconds}s ago`, stale: false };
+  if (openPositions === 0) return { label: "Ledger idle", stale: false };
   const minutes = Math.floor(seconds / 60);
   return { label: `Ledger ${minutes}m ago`, stale: true };
 }
@@ -185,7 +186,7 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
         ? "text-destructive"
         : "text-muted-foreground";
   const environment = account.account_environment === "demo" ? "DEMO" : "LIVE";
-  const freshness = snapshotFreshness(account.snapshotAt);
+  const freshness = snapshotFreshness(account.snapshotAt, account.openPositions);
 
   return (
     <div className="space-y-1">
