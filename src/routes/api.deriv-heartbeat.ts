@@ -1,16 +1,51 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-function authorized(request: Request) {
+type SchedulerTokenRpcResult = {
+  data: boolean | null;
+  error: { message: string } | null;
+};
+
+async function authorizedBySchedulerVault(token: string) {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const rpc = supabaseAdmin.rpc.bind(supabaseAdmin) as unknown as (
+      functionName: string,
+      args: Record<string, unknown>,
+    ) => PromiseLike<SchedulerTokenRpcResult>;
+    const { data, error } = await rpc("verify_scheduler_token", { p_token: token });
+    if (error) {
+      console.error(`[Deriv heartbeat auth] Scheduler token verification failed: ${error.message}`);
+      return false;
+    }
+    return data === true;
+  } catch (error) {
+    console.error(
+      `[Deriv heartbeat auth] Scheduler token verification failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    return false;
+  }
+}
+
+async function authorized(request: Request) {
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ")) return false;
+
+  const token = authorization.slice("Bearer ".length).trim();
+  if (!token || token.length > 512) return false;
+
   const expected = process.env.CRON_SECRET;
-  if (!expected) return false;
-  return request.headers.get("authorization") === `Bearer ${expected}`;
+  if (expected && token === expected) return true;
+
+  return authorizedBySchedulerVault(token);
 }
 
 export const Route = createFileRoute("/api/deriv-heartbeat")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        if (!authorized(request)) {
+        if (!(await authorized(request))) {
           return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
         }
 
