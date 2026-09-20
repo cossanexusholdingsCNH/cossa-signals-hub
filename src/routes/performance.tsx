@@ -11,10 +11,10 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/performance")({
   head: () => ({
     meta: [
-      { title: "Performance — Cossa Signals" },
-      { name: "description", content: "Verified performance analytics for Cossa Signals strategies and instruments — sample-size guarded, nothing cherry-picked." },
-      { property: "og:title", content: "Performance — Cossa Signals" },
-      { property: "og:description", content: "Transparent, statistically-guarded performance evidence." },
+      { title: "Performance Evidence — Cossa Signals" },
+      { name: "description", content: "Transparent research, backtest, paper and live-verified performance evidence for Cossa Signals, with mode and sample-size context." },
+      { property: "og:title", content: "Performance Evidence — Cossa Signals" },
+      { property: "og:description", content: "Mode-aware, statistically guarded Cossa Signals performance evidence." },
     ],
   }),
   component: PerformancePage,
@@ -41,6 +41,14 @@ function PerformanceContent() {
     [snapshots, mode],
   );
   const reliable = rows.filter((s) => isSampleReliable(s.total_trades));
+  const allDemo = rows.length > 0 && rows.every((s) => s.is_demo);
+  const hasLiveVerified = rows.some((s) => s.mode === "live_verified" && !s.is_demo);
+  const newestCalculatedAt = useMemo(() => {
+    const timestamps = rows
+      .map((s) => new Date(s.calculated_at).getTime())
+      .filter((value) => Number.isFinite(value));
+    return timestamps.length > 0 ? new Date(Math.max(...timestamps)).toISOString() : null;
+  }, [rows]);
 
   const agg = useMemo(() => {
     if (reliable.length === 0) return null;
@@ -56,30 +64,48 @@ function PerformanceContent() {
     <div className="space-y-5">
       <PageHeader
         eyebrow="Evidence"
-        title="Performance analytics"
-        description="Computed by the backend from closed signals only. Segments with fewer than 30 trades are flagged as statistically unreliable — we show them, but we don't lean on them."
+        title="Performance evidence"
+        description="Research, backtest, paper and live-verified results are kept separate. Historical demo snapshots are never presented as current live-account performance."
       />
 
+      {allDemo ? (
+        <Panel>
+          <div className="space-y-1 px-4 py-3">
+            <p className="text-xs font-semibold text-caution">Historical demo evidence — not live performance</p>
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              Every snapshot in the current view is marked demo. These figures are research/backtest/paper evidence and must not be read as current account returns, live execution results or a performance promise.
+              {newestCalculatedAt ? ` Latest snapshot: ${formatDate(newestCalculatedAt)}.` : ""}
+            </p>
+          </div>
+        </Panel>
+      ) : !isLoading && rows.length > 0 && !hasLiveVerified ? (
+        <Panel>
+          <div className="px-4 py-3 text-[11px] leading-5 text-muted-foreground">
+            This view contains no live-verified segment. Use mode and demo labels when interpreting every result.
+          </div>
+        </Panel>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Tracked segments" value={rows.length} hint="Instrument × strategy × timeframe" />
-        <StatCard label="Reliable segments" value={reliable.length} tone="gold" hint="30+ closed trades" />
+        <StatCard label="Evidence segments" value={rows.length} hint="Instrument × strategy × timeframe snapshots" />
+        <StatCard label="Reliable samples" value={reliable.length} tone="gold" hint="30+ trades within the selected evidence mode" />
         <StatCard
-          label="Closed trades (reliable)"
+          label="Snapshot trades (reliable)"
           value={agg?.trades ?? "—"}
-          hint="Across reliable segments only"
+          hint="Historical snapshot totals; not account trade count"
         />
         <StatCard
-          label="Avg win rate (reliable)"
+          label="Snapshot avg win rate"
           value={agg?.avgWinRate != null ? formatPct(agg.avgWinRate) : "—"}
           tone={agg?.avgWinRate != null && agg.avgWinRate >= 50 ? "bullish" : "default"}
-          hint={agg ? "Mean of segment win rates" : "Insufficient sample size yet"}
+          hint={agg ? "Mean of reliable evidence segments" : "Insufficient sample size yet"}
         />
       </div>
 
       <Panel>
         <PanelHeader
-          title="Segments"
-          subtitle="All snapshots, including small samples"
+          title="Evidence segments"
+          subtitle="Mode-labelled snapshots, including small samples"
           action={
             <select
               value={mode}
@@ -96,11 +122,11 @@ function PerformanceContent() {
           }
         />
         {isLoading ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">Loading performance…</p>
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">Loading performance evidence…</p>
         ) : rows.length === 0 ? (
           <EmptyState
-            title="No performance data yet"
-            description="Snapshots appear once the engine has closed enough signals to measure."
+            title="No performance evidence yet"
+            description="Evidence snapshots appear only when a research, backtest, paper or live-verified measurement has been recorded."
           />
         ) : (
           <div className="overflow-x-auto">
@@ -135,7 +161,7 @@ function PerformanceContent() {
                       <td className="numeric px-3 py-2.5">{formatNum(s.sharpe_ratio)}</td>
                       <td className="px-3 py-2.5">
                         {ok ? (
-                          <span className="text-bullish">Reliable</span>
+                          <span className="text-bullish">Reliable sample</span>
                         ) : (
                           <span className="text-caution">n={s.total_trades}</span>
                         )}
@@ -155,14 +181,14 @@ function PerformanceContent() {
           <div className="px-4 py-3">
             <SampleGuard totalTrades={Math.min(...rows.map((s) => s.total_trades))} />
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Segments below the 30-trade threshold are shown for transparency but excluded from headline aggregates.
+              Segments below the 30-trade threshold are shown for transparency but excluded from headline evidence aggregates.
             </p>
           </div>
         </Panel>
       ) : null}
 
       <Panel>
-        <PanelHeader title="Strategy validation" subtitle="How each strategy earned its status" />
+        <PanelHeader title="Strategy validation" subtitle="How each strategy earned its current validation status" />
         <ul className="divide-y divide-border/60">
           {[
             ...new Map(
