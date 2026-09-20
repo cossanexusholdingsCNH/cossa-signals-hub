@@ -68,6 +68,7 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
   const [topUpAmount, setTopUpAmount] = useState("1000");
   const [topUpBusy, setTopUpBusy] = useState(false);
   const [topUpMessage, setTopUpMessage] = useState<string | null>(null);
+  const [topUpRequestKey, setTopUpRequestKey] = useState<string | null>(null);
 
   const accountState = useQuery({
     queryKey: ["account-state", user?.id],
@@ -101,6 +102,8 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
       setTopUpMessage("Enter a positive demo amount.");
       return;
     }
+    const idempotencyKey = topUpRequestKey ?? crypto.randomUUID();
+    if (!topUpRequestKey) setTopUpRequestKey(idempotencyKey);
     setTopUpBusy(true);
     setTopUpMessage(null);
     try {
@@ -112,12 +115,14 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
+          "idempotency-key": idempotencyKey,
         },
-        body: JSON.stringify({ accountId: account.id, amount }),
+        body: JSON.stringify({ accountId: account.id, amount, idempotencyKey }),
       });
       const payload = (await response.json()) as { ok?: boolean; error?: string };
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Demo top up failed");
       await accountState.refetch();
+      setTopUpRequestKey(null);
       setTopUpMessage(`Added ${money(amount, account.currency)} virtual funds.`);
       setShowTopUp(false);
     } catch (error) {
@@ -188,7 +193,7 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
           <Stat label="Balance" value={money(account.balance, account.currency)} />
           <Stat label="Equity" value={money(account.equity, account.currency)} />
           <Stat label="Available" value={money(account.availableBalance, account.currency)} />
-          <Stat label="P/L" value={money(account.totalPnl, account.currency)} emphasis={pnlClass} />
+          <Stat label="Total P/L" value={money(account.totalPnl, account.currency)} emphasis={pnlClass} />
           <Stat label="Open" value={account.openPositions} />
           <Stat
             label="W / L"
@@ -249,8 +254,13 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
             max="1000000"
             step="100"
             value={topUpAmount}
-            onChange={(event) => setTopUpAmount(event.target.value)}
-            className="h-7 w-32 rounded border border-border bg-background px-2 tabular-nums text-foreground outline-none focus:border-border-gold"
+            disabled={topUpBusy}
+            onChange={(event) => {
+              setTopUpAmount(event.target.value);
+              setTopUpRequestKey(null);
+              setTopUpMessage(null);
+            }}
+            className="h-7 w-32 rounded border border-border bg-background px-2 tabular-nums text-foreground outline-none focus:border-border-gold disabled:opacity-60"
           />
           <button
             type="button"

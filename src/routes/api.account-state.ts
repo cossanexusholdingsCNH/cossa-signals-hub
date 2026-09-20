@@ -30,7 +30,7 @@ export const Route = createFileRoute("/api/account-state")({
           let accountQuery = supabaseAdmin
             .from("trading_accounts")
             .select(
-              "id,provider,provider_account_ref,account_label,account_environment,execution_mode,enabled,currency,emergency_stop,max_risk_per_trade_pct,max_daily_loss_pct,max_open_positions",
+              "id,provider,account_label,account_environment,execution_mode,enabled,currency,emergency_stop,max_risk_per_trade_pct,max_daily_loss_pct,max_open_positions",
             )
             .eq("user_id", auth.user.id)
             .eq("enabled", true);

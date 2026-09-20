@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/deriv-heartbeat")({
             import("@/server/market-data/deriv-heartbeat.server"),
             import("@/server/runtime/scheduler-lease.server"),
           ]);
-        const lease = await acquireSchedulerLease("deriv-heartbeat", 55);
+        const lease = await acquireSchedulerLease("deriv-heartbeat", 150);
         if (!lease.acquired) {
           return Response.json(
             { ok: true, skipped: true, reason: "heartbeat already running" },

@@ -8,6 +8,7 @@ type MappingRow = {
 
 const DEFAULT_CONCURRENCY = 8;
 const MAX_CONCURRENCY = 12;
+const MIN_HEALTHY_SUCCESS_RATIO = 0.9;
 
 function concurrencyLimit() {
   const configured = Number.parseInt(process.env.DERIV_HEARTBEAT_CONCURRENCY ?? "", 10);
@@ -85,6 +86,24 @@ async function runPool<T, R>(items: T[], concurrency: number, worker: (item: T) 
   return results;
 }
 
+async function markTotalFailure(providerId: string) {
+  const current = await supabaseAdmin
+    .from("market_data_providers")
+    .select("consecutive_failures")
+    .eq("id", providerId)
+    .single();
+  const failures = Math.max(0, current.data?.consecutive_failures ?? 0) + 1;
+  const circuitOpenUntil = failures >= 5 ? new Date(Date.now() + 5 * 60_000).toISOString() : null;
+  await supabaseAdmin
+    .from("market_data_providers")
+    .update({
+      last_failure_at: new Date().toISOString(),
+      consecutive_failures: failures,
+      circuit_open_until: circuitOpenUntil,
+    })
+    .eq("id", providerId);
+}
+
 export async function runEnabledDerivHeartbeat() {
   const provider = await resolveProvider();
   const { data, error } = await supabaseAdmin
@@ -104,15 +123,23 @@ export async function runEnabledDerivHeartbeat() {
 
   if (!mappings.length) throw new Error("No enabled Deriv instruments are configured");
 
-  const results = await runPool(mappings, concurrencyLimit(), (mapping) =>
-    persistHeartbeat(provider.id, mapping),
-  );
+  const results = await runPool(mappings, concurrencyLimit(), async (mapping) => {
+    try {
+      return await persistHeartbeat(provider.id, mapping);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Heartbeat failed";
+      throw new Error(`${mapping.provider_symbol}: ${message}`);
+    }
+  });
   const failures = results.filter((result) => result instanceof Error);
+  const succeeded = mappings.length - failures.length;
+  const successRatio = succeeded / mappings.length;
+  const healthy = successRatio >= MIN_HEALTHY_SUCCESS_RATIO;
   const latestSuccess = results
     .filter((result): result is { symbol: string; price: number; at: string } => !(result instanceof Error))
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
 
-  if (latestSuccess) {
+  if (healthy && latestSuccess) {
     await supabaseAdmin
       .from("market_data_providers")
       .update({
@@ -121,13 +148,26 @@ export async function runEnabledDerivHeartbeat() {
         circuit_open_until: null,
       })
       .eq("id", provider.id);
+  } else if (latestSuccess) {
+    await supabaseAdmin
+      .from("market_data_providers")
+      .update({
+        last_success_at: latestSuccess.at,
+        last_failure_at: new Date().toISOString(),
+      })
+      .eq("id", provider.id);
+  } else {
+    await markTotalFailure(provider.id);
   }
 
   return {
-    ok: failures.length < mappings.length,
+    ok: healthy,
+    degraded: failures.length > 0,
     attempted: mappings.length,
-    succeeded: mappings.length - failures.length,
+    succeeded,
     failed: failures.length,
+    successRatio: Number(successRatio.toFixed(4)),
+    minimumHealthyRatio: MIN_HEALTHY_SUCCESS_RATIO,
     latestAt: latestSuccess?.at ?? null,
     errors: failures.slice(0, 10).map((error) => error.message),
   };
