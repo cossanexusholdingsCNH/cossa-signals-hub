@@ -6,6 +6,18 @@ type MappingRow = {
   instrument_id: string;
 };
 
+type HeartbeatSuccess = {
+  symbol: string;
+  price: number;
+  at: string;
+};
+
+type HeartbeatClosed = {
+  symbol: string;
+  closed: true;
+  reason: string;
+};
+
 const DEFAULT_CONCURRENCY = 8;
 const MAX_CONCURRENCY = 12;
 const MIN_HEALTHY_SUCCESS_RATIO = 0.9;
@@ -14,6 +26,19 @@ function concurrencyLimit() {
   const configured = Number.parseInt(process.env.DERIV_HEARTBEAT_CONCURRENCY ?? "", 10);
   if (!Number.isFinite(configured) || configured < 1) return DEFAULT_CONCURRENCY;
   return Math.min(configured, MAX_CONCURRENCY);
+}
+
+function isExpectedMarketClosure(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("market is presently closed") || normalized.includes("market is closed");
+}
+
+function isHeartbeatClosed(result: HeartbeatSuccess | HeartbeatClosed | Error): result is HeartbeatClosed {
+  return !(result instanceof Error) && "closed" in result && result.closed === true;
+}
+
+function isHeartbeatSuccess(result: HeartbeatSuccess | HeartbeatClosed | Error): result is HeartbeatSuccess {
+  return !(result instanceof Error) && !isHeartbeatClosed(result);
 }
 
 async function resolveProvider() {
@@ -123,21 +148,30 @@ export async function runEnabledDerivHeartbeat() {
 
   if (!mappings.length) throw new Error("No enabled Deriv instruments are configured");
 
-  const results = await runPool(mappings, concurrencyLimit(), async (mapping) => {
-    try {
-      return await persistHeartbeat(provider.id, mapping);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Heartbeat failed";
-      throw new Error(`${mapping.provider_symbol}: ${message}`);
-    }
-  });
-  const failures = results.filter((result) => result instanceof Error);
-  const succeeded = mappings.length - failures.length;
-  const successRatio = succeeded / mappings.length;
+  const results = await runPool<MappingRow, HeartbeatSuccess | HeartbeatClosed>(
+    mappings,
+    concurrencyLimit(),
+    async (mapping) => {
+      try {
+        return await persistHeartbeat(provider.id, mapping);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Heartbeat failed";
+        if (isExpectedMarketClosure(message)) {
+          return { symbol: mapping.provider_symbol, closed: true, reason: message };
+        }
+        throw new Error(`${mapping.provider_symbol}: ${message}`);
+      }
+    },
+  );
+
+  const failures = results.filter((result): result is Error => result instanceof Error);
+  const closed = results.filter(isHeartbeatClosed);
+  const successes = results.filter(isHeartbeatSuccess);
+  const eligible = successes.length + failures.length;
+  const succeeded = successes.length;
+  const successRatio = eligible === 0 ? 1 : succeeded / eligible;
   const healthy = successRatio >= MIN_HEALTHY_SUCCESS_RATIO;
-  const latestSuccess = results
-    .filter((result): result is { symbol: string; price: number; at: string } => !(result instanceof Error))
-    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
+  const latestSuccess = successes.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
 
   if (healthy && latestSuccess) {
     await supabaseAdmin
@@ -156,7 +190,7 @@ export async function runEnabledDerivHeartbeat() {
         last_failure_at: new Date().toISOString(),
       })
       .eq("id", provider.id);
-  } else {
+  } else if (failures.length > 0) {
     await markTotalFailure(provider.id);
   }
 
@@ -164,11 +198,17 @@ export async function runEnabledDerivHeartbeat() {
     ok: healthy,
     degraded: failures.length > 0,
     attempted: mappings.length,
+    eligible,
     succeeded,
     failed: failures.length,
+    closed: closed.length,
     successRatio: Number(successRatio.toFixed(4)),
     minimumHealthyRatio: MIN_HEALTHY_SUCCESS_RATIO,
     latestAt: latestSuccess?.at ?? null,
     errors: failures.slice(0, 10).map((error) => error.message),
+    closedMarkets: closed.slice(0, 10).map((result) => ({
+      symbol: result.symbol,
+      reason: result.reason,
+    })),
   };
 }
