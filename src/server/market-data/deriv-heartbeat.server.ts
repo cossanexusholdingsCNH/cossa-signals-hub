@@ -52,6 +52,18 @@ async function resolveProvider() {
   return data;
 }
 
+async function persistClosedMarket(mapping: MappingRow) {
+  const { error } = await supabaseAdmin
+    .from("instruments")
+    .update({
+      market_status: "closed",
+      data_source: "deriv",
+      is_demo: false,
+    })
+    .eq("id", mapping.instrument_id);
+  if (error) throw new Error(`Unable to mark ${mapping.provider_symbol} closed: ${error.message}`);
+}
+
 async function persistHeartbeat(providerId: string, mapping: MappingRow) {
   const candles = await fetchDerivCandles(mapping.provider_symbol, 60, 2);
   const latest = candles.at(-1);
@@ -170,6 +182,7 @@ export async function runEnabledDerivHeartbeat() {
     concurrencyLimit(),
     async (mapping) => {
       if (marketOpen.get(mapping.provider_symbol) === false) {
+        await persistClosedMarket(mapping);
         return {
           symbol: mapping.provider_symbol,
           closed: true,
@@ -182,6 +195,7 @@ export async function runEnabledDerivHeartbeat() {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Heartbeat failed";
         if (isExpectedMarketClosure(message)) {
+          await persistClosedMarket(mapping);
           return { symbol: mapping.provider_symbol, closed: true, reason: message };
         }
         throw new Error(`${mapping.provider_symbol}: ${message}`);
