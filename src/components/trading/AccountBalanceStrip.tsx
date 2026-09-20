@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
+  AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
   Check,
@@ -51,6 +52,16 @@ function money(value: number, currency: string) {
   } catch {
     return `${currency || "ZAR"} ${(Number.isFinite(value) ? value : 0).toFixed(2)}`;
   }
+}
+
+function snapshotFreshness(snapshotAt: string | null) {
+  if (!snapshotAt) return { label: "No account snapshot", stale: true };
+  const timestamp = new Date(snapshotAt).getTime();
+  if (!Number.isFinite(timestamp)) return { label: "Invalid snapshot time", stale: true };
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return { label: `Ledger ${seconds}s ago`, stale: false };
+  const minutes = Math.floor(seconds / 60);
+  return { label: `Ledger ${minutes}m ago`, stale: true };
 }
 
 function Stat({ label, value, emphasis }: { label: string; value: React.ReactNode; emphasis?: string }) {
@@ -140,6 +151,22 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
     );
   }
 
+  if (accountState.isError) {
+    return (
+      <div className="flex min-h-9 items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 text-[10px] text-destructive">
+        <AlertTriangle className="size-3.5 shrink-0" />
+        <span>Account state unavailable. Your account has not been removed.</span>
+        <button
+          type="button"
+          onClick={() => void accountState.refetch()}
+          className="ml-auto inline-flex h-6 items-center gap-1 rounded border border-destructive/40 px-2 font-semibold hover:bg-destructive/10"
+        >
+          <RefreshCw className={cn("size-3", accountState.isFetching && "animate-spin")} /> Retry
+        </button>
+      </div>
+    );
+  }
+
   if (!account) {
     return (
       <Link
@@ -158,6 +185,7 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
         ? "text-destructive"
         : "text-muted-foreground";
   const environment = account.account_environment === "demo" ? "DEMO" : "LIVE";
+  const freshness = snapshotFreshness(account.snapshotAt);
 
   return (
     <div className="space-y-1">
@@ -182,9 +210,16 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
               >
                 {environment}
               </span>
+              {account.emergency_stop ? (
+                <span className="rounded border border-destructive/40 px-1 py-0.5 text-[8px] text-destructive">
+                  STOP
+                </span>
+              ) : null}
             </div>
-            <div className="text-[9px] text-muted-foreground">
-              {account.execution_mode.replaceAll("_", " ")}
+            <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
+              <span>{account.execution_mode.replaceAll("_", " ")}</span>
+              <span aria-hidden="true">·</span>
+              <span className={freshness.stale ? "text-caution" : undefined}>{freshness.label}</span>
             </div>
           </div>
         </div>
@@ -227,7 +262,7 @@ export function AccountBalanceStrip({ compact = false }: { compact?: boolean }) 
           )}
           <Link
             to="/performance"
-            title="View trading performance"
+            title="View performance evidence"
             className="hidden h-7 items-center gap-1 rounded border border-border px-2 text-[9px] font-semibold text-muted-foreground hover:text-foreground lg:inline-flex"
           >
             <Trophy className="size-3" /> Results
