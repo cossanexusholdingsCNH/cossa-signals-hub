@@ -30,12 +30,20 @@ export const Route = createFileRoute("/api/demo-funds")({
           const body = (await request.json()) as Record<string, unknown>;
           const accountId = typeof body.accountId === "string" ? body.accountId : "";
           const amount = Number(body.amount);
+          const idempotencyKey =
+            typeof body.idempotencyKey === "string"
+              ? body.idempotencyKey
+              : request.headers.get("idempotency-key") ?? "";
           if (!accountId) return json({ ok: false, error: "accountId is required" }, 400);
+          if (!idempotencyKey.trim()) {
+            return json({ ok: false, error: "idempotencyKey is required" }, 400);
+          }
 
           const result = await topUpDemoTradingAccount({
             accountId,
             userId: auth.user.id,
             amount,
+            idempotencyKey,
           });
           return json({ ok: true, result });
         } catch (error) {

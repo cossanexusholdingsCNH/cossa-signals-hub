@@ -7,6 +7,27 @@ function positive(value: unknown, label: string) {
   return parsed;
 }
 
+function normalizeIdempotencyKey(value: string) {
+  const key = value.trim();
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(key)) {
+    throw new Error("Invalid demo top up idempotency key");
+  }
+  return key;
+}
+
+async function findDemoFundingEvent(accountId: string, userId: string, idempotencyKey: string) {
+  const result = await supabaseAdmin
+    .from("demo_funding_events")
+    .select("id,amount,currency,metadata")
+    .eq("trading_account_id", accountId)
+    .eq("user_id", userId)
+    .contains("metadata", { idempotency_key: idempotencyKey })
+    .limit(1)
+    .maybeSingle();
+  if (result.error) throw new Error(`Unable to inspect demo top up: ${result.error.message}`);
+  return result.data;
+}
+
 export async function bootstrapDemoTradingAccount(input: {
   userId: string;
   startingBalance: number;
@@ -96,9 +117,11 @@ export async function topUpDemoTradingAccount(input: {
   accountId: string;
   userId: string;
   amount: number;
+  idempotencyKey: string;
 }) {
   const amount = positive(input.amount, "top up amount");
   if (amount > 1_000_000) throw new Error("Demo top up cannot exceed 1,000,000 per request");
+  const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
 
   const account = await supabaseAdmin
     .from("trading_accounts")
@@ -110,18 +133,40 @@ export async function topUpDemoTradingAccount(input: {
   if (account.data.account_environment !== "demo") throw new Error("Only demo accounts can receive virtual top ups");
   if (!account.data.enabled) throw new Error("Demo account is disabled");
 
-  const { error } = await supabaseAdmin.from("demo_funding_events").insert({
-    trading_account_id: input.accountId,
-    user_id: input.userId,
-    event_type: "top_up",
-    amount,
-    currency: account.data.currency || "ZAR",
-    metadata: { source: "cossa_demo_top_up", virtual_funds: true },
-  });
-  if (error) throw new Error(`Unable to record demo top up: ${error.message}`);
+  let replayed = false;
+  let existing = await findDemoFundingEvent(input.accountId, input.userId, idempotencyKey);
+  if (existing) {
+    if (Number(existing.amount) !== amount) {
+      throw new Error("Demo top up idempotency key was already used for a different amount");
+    }
+    replayed = true;
+  } else {
+    const { error } = await supabaseAdmin.from("demo_funding_events").insert({
+      trading_account_id: input.accountId,
+      user_id: input.userId,
+      event_type: "top_up",
+      amount,
+      currency: account.data.currency || "ZAR",
+      metadata: {
+        source: "cossa_demo_top_up",
+        virtual_funds: true,
+        idempotency_key: idempotencyKey,
+      },
+    });
+    if (error) {
+      if (error.code !== "23505") {
+        throw new Error(`Unable to record demo top up: ${error.message}`);
+      }
+      existing = await findDemoFundingEvent(input.accountId, input.userId, idempotencyKey);
+      if (!existing || Number(existing.amount) !== amount) {
+        throw new Error("Unable to reconcile duplicate demo top up request");
+      }
+      replayed = true;
+    }
+  }
 
   const state = await refreshDemoRiskState(input.accountId, input.userId);
-  return { ...state, topUpAmount: amount };
+  return { ...state, topUpAmount: amount, replayed, idempotencyKey };
 }
 
 export async function refreshDemoRiskState(accountId: string, userId: string) {

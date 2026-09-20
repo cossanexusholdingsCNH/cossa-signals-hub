@@ -2,7 +2,9 @@ name: Deriv Market Heartbeat
 
 on:
   schedule:
-    - cron: "* * * * *"
+    # GitHub Actions supports scheduled workflows no more frequently than every 5 minutes.
+    # cron-job.org will provide the primary 1-minute production heartbeat after deployment.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
   pull_request:
     paths:
