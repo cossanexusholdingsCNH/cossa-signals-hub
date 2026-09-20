@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../integrations/supabase/client.server";
+import { refreshDemoRiskState } from "./demo-account.server";
 import { DemoDerivExecutionAdapter } from "./demo-deriv-adapter.server";
 import {
   closeOpenPosition,
@@ -67,12 +68,14 @@ export async function fillApprovedDemoOrder(orderId: string, userId: string) {
 
   const order = normalizedOrderFromRow(loaded.row);
   const adapter = adapterFor(loaded.provider, order.environment);
-  return fillSubmittedOrder({
+  const lifecycle = await fillSubmittedOrder({
     supabase: supabaseAdmin,
     adapter,
     order,
     signalId: loaded.row.signal_id,
   });
+  const accountState = await refreshDemoRiskState(order.accountId, userId);
+  return { ...lifecycle, accountState };
 }
 
 async function loadPosition(positionId: string, userId: string) {
@@ -99,7 +102,7 @@ export async function refreshDemoPosition(positionId: string, userId: string) {
   const order = normalizedOrderFromRow(loaded.row);
   const adapter = adapterFor(loaded.provider, order.environment);
 
-  return monitorOpenPosition({
+  const lifecycle = await monitorOpenPosition({
     supabase: supabaseAdmin,
     adapter,
     order,
@@ -113,6 +116,8 @@ export async function refreshDemoPosition(positionId: string, userId: string) {
       take_profit_1: position.take_profit_1 == null ? null : Number(position.take_profit_1),
     },
   });
+  const accountState = await refreshDemoRiskState(order.accountId, userId);
+  return { ...lifecycle, accountState };
 }
 
 export async function closeDemoPosition(positionId: string, userId: string) {
@@ -120,7 +125,7 @@ export async function closeDemoPosition(positionId: string, userId: string) {
   const order = normalizedOrderFromRow(loaded.row);
   const adapter = adapterFor(loaded.provider, order.environment);
 
-  return closeOpenPosition({
+  const lifecycle = await closeOpenPosition({
     supabase: supabaseAdmin,
     adapter,
     order,
@@ -135,4 +140,6 @@ export async function closeDemoPosition(positionId: string, userId: string) {
     },
     reason: "manual",
   });
+  const accountState = await refreshDemoRiskState(order.accountId, userId);
+  return { ...lifecycle, accountState };
 }
